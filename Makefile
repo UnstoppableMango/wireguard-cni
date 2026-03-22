@@ -17,7 +17,7 @@ test:
 	$(GINKGO) run -r --label-filter="!integration"
 
 load: bin/stream-image.sh
-	${CURDIR}/$ | ${DOCKER} load
+	${CURDIR}/$< | ${DOCKER} load
 
 format fmt:
 	nix fmt
