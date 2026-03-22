@@ -24,15 +24,18 @@ load: bin/stream-image.sh
 format fmt:
 	nix fmt
 
+check:
+	nix flake check
+
 # Run all tests inside a privileged Docker container (no sudo required)
-test-container:
+test-privileged:
 	$(DOCKER) run --rm \
 	  --privileged \
 	  -v "$(CURDIR):/src" \
 	  -v "$(GOPATH)/pkg/mod:/go/pkg/mod" \
 	  -w /src \
 	  $(GO_IMAGE) \
-	  $(GO) test -v ./...
+	  go test -v ./...
 
 go.sum: go.mod ${GO_SRC}
 	$(GO) mod tidy

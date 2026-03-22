@@ -96,8 +96,9 @@
           };
 
           treefmt.programs = {
-            nixfmt.enable = true;
+            actionlint.enable = true;
             gofmt.enable = true;
+            nixfmt.enable = true;
           };
         };
     };
