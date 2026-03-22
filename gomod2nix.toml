@@ -1,0 +1,18 @@
+schema = 3
+
+[mod]
+  [mod.'github.com/containernetworking/cni']
+    version = 'v1.3.0'
+    hash = 'sha256-n23SNnmmVOsUulLKFc0iqdl8U53rUfd+uHjviY3CwRs='
+
+  [mod.'github.com/containernetworking/plugins']
+    version = 'v1.8.0'
+    hash = 'sha256-M3SEl7yNfZyF+TgzBxMxF8bsND1cn/Py/7msngA3AQY='
+
+  [mod.'github.com/vishvananda/netns']
+    version = 'v0.0.5'
+    hash = 'sha256-wYDmrmqdv9R8dAL5nuWJ+1Nh7fWWxdpd03UkLOtyJrk='
+
+  [mod.'golang.org/x/sys']
+    version = 'v0.35.0'
+    hash = 'sha256-ZKM8pesQE6NAFZeKQ84oPn5JMhGr8g4TSwLYAsHMGSI='

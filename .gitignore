@@ -4,3 +4,5 @@ bin/
 .DS_Store
 .vscode/*
 !.vscode/extensions.json
+.claude/*
+wireguard-cni
