@@ -38,6 +38,15 @@ test-privileged:
 	  $(GO_IMAGE) \
 	  go test -v ./...
 
+test-e2e:
+	$(DOCKER) run --rm \
+	  --privileged \
+	  -v "$(CURDIR):/src" \
+	  -v "$(GOPATH)/pkg/mod:/go/pkg/mod" \
+	  -w /src \
+	  $(GO_IMAGE) \
+	  go test -v . -args --ginkgo.label-filter="e2e"
+
 go.sum: go.mod ${GO_SRC}
 	$(GO) mod tidy
 
