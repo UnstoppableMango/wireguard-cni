@@ -1,10 +1,11 @@
-DOCKER ?= docker
-GINKGO ?= ginkgo
-GO     ?= go
+DOCKER    ?= docker
+GINKGO    ?= ginkgo
+GO        ?= go
+GOMOD2NIX ?= gomod2nix
 
-GOVERSION ?= $(shell go env GOVERSION | sed 's/go//')
+GOVERSION ?= $(shell $(GO) env GOVERSION | sed 's/go//')
 GO_IMAGE  ?= golang:$(GOVERSION)
-GOPATH    ?= $(shell go env GOPATH)
+GOPATH    ?= $(shell $(GO) env GOPATH)
 
 GO_SRC := $(shell find . -name '*.go')
 
@@ -24,15 +25,18 @@ load: bin/stream-image.sh
 format fmt:
 	nix fmt
 
+check:
+	nix flake check
+
 # Run all tests inside a privileged Docker container (no sudo required)
-test-container:
+test-privileged:
 	$(DOCKER) run --rm \
 	  --privileged \
 	  -v "$(CURDIR):/src" \
 	  -v "$(GOPATH)/pkg/mod:/go/pkg/mod" \
 	  -w /src \
 	  $(GO_IMAGE) \
-	  $(GO) test -v ./...
+	  go test -v ./...
 
 go.sum: go.mod ${GO_SRC}
 	$(GO) mod tidy
@@ -40,8 +44,8 @@ go.sum: go.mod ${GO_SRC}
 gomod2nix.toml: go.sum
 	$(GOMOD2NIX) generate
 
-bin/wireguard-cni: ${GO_SRC}
-	$(GO) build -o $@ .
+bin/wireguard-cni: | result/bin/wireguard-cni
+	mkdir -p ${@D} && ln -sf ${CURDIR}/$| ${CURDIR}/$@
 
 bin/stream-image.sh: ${GO_SRC}
 	nix build .#ctr --out-link $@
@@ -51,3 +55,6 @@ bin/image.tar.gz: bin/stream-image.sh
 
 coverprofile.out: ${GO_SRC}
 	$(GINKGO) run -r --cover --label-filter="!integration"
+
+result/bin/wireguard-cni: ${GO_SRC}
+	nix build .#wireguard-cni
