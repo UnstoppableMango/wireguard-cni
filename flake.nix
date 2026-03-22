@@ -39,12 +39,13 @@
         let
           inherit (inputs'.gomod2nix.legacyPackages) buildGoApplication;
 
-          go = pkgs.go_1_26;
+          gopkg = pkgs.go_1_26;
           version = "0.0.1";
           wireguard-cni = buildGoApplication {
             pname = "wireguard-cni";
-            inherit version go;
+            inherit version;
 
+            go = gopkg;
             src = lib.cleanSource ./.;
             modules = ./gomod2nix.toml;
 
@@ -85,17 +86,17 @@
             packages = with pkgs; [
               docker
               ginkgo
-              go
+              gopkg
               gomod2nix
               nixfmt
             ];
 
             DOCKER = "${pkgs.docker}/bin/docker";
             GINKGO = "${pkgs.ginkgo}/bin/ginkgo";
-            GO = "${go}/bin/go";
+            GO = "${gopkg}/bin/go";
             GOMOD2NIX = "${pkgs.gomod2nix}/bin/gomod2nix";
 
-            GOVERSION = go.version;
+            GOVERSION = gopkg.version;
           };
 
           treefmt.programs = {

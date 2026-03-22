@@ -50,5 +50,5 @@ jobs:
 
       - uses: DeterminateSystems/magic-nix-cache-action@v13
 
-      - run: make gomod2nix.toml
+      - run: nix develop -c make gomod2nix.toml
       - run: git diff --exit-code

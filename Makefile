@@ -1,10 +1,11 @@
-DOCKER ?= docker
-GINKGO ?= ginkgo
-GO     ?= go
+DOCKER    ?= docker
+GINKGO    ?= ginkgo
+GO        ?= go
+GOMOD2NIX ?= gomod2nix
 
-GOVERSION ?= $(shell go env GOVERSION | sed 's/go//')
+GOVERSION ?= $(shell $(GO) env GOVERSION | sed 's/go//')
 GO_IMAGE  ?= golang:$(GOVERSION)
-GOPATH    ?= $(shell go env GOPATH)
+GOPATH    ?= $(shell $(GO) env GOPATH)
 
 GO_SRC := $(shell find . -name '*.go')
 
