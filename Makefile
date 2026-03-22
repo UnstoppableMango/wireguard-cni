@@ -39,7 +39,7 @@ bin/image.tar.gz: bin/stream-image.sh
 
 # Run all tests inside a privileged Docker container (no sudo required)
 test-container:
-	docker run --rm \
+	$(DOCKER) run --rm \
 	  --privileged \
 	  -v "$(CURDIR):/src" \
 	  -v "$(GOPATH)/pkg/mod:/go/pkg/mod" \

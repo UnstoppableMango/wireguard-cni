@@ -58,14 +58,11 @@
             name = "wireguard-cni";
             tag = version;
 
-            contents = [
-              pkgs.cacert
-              (pkgs.buildEnv {
-                name = "image-root";
-                paths = [ wireguard-cni ];
-                pathsToLink = [ "/bin" ];
-              })
-            ];
+            contents = pkgs.buildEnv {
+              name = "image-root";
+              paths = [ wireguard-cni ];
+              pathsToLink = [ "/bin" ];
+            };
 
             config = {
               Entrypoint = [ "/bin/wireguard-cni" ];
