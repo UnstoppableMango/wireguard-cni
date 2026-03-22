@@ -29,35 +29,73 @@
       imports = [ inputs.treefmt-nix.flakeModule ];
 
       perSystem =
-        { inputs', pkgs, lib, system, ... }:
-	let
-	  inherit (inputs'.gomod2nix.legacyPackages) buildGoApplication;
+        {
+          inputs',
+          pkgs,
+          lib,
+          system,
+          ...
+        }:
+        let
+          inherit (inputs'.gomod2nix.legacyPackages) buildGoApplication;
 
-	  wireguard-cni = buildGoApplication {
+          version = "0.0.1";
+          wireguard-cni = buildGoApplication {
             pname = "wireguard-cni";
-	    version = "0.0.1";
+            inherit version;
 
-	    src = lib.cleanSource ./.;
-	    modules = ./gomod2nix.toml;
-	  };
-	in
+            src = lib.cleanSource ./.;
+            modules = ./gomod2nix.toml;
+
+            nativeBuildInputs = [ pkgs.ginkgo ];
+
+            checkPhase = ''
+              ginkgo run -r --label-filter="!integration"
+            '';
+          };
+
+          ctr = pkgs.dockerTools.streamLayeredImage {
+            name = "wireguard-cni";
+            tag = version;
+
+            contents = [
+              pkgs.cacert
+              (pkgs.buildEnv {
+                name = "image-root";
+                paths = [ wireguard-cni ];
+                pathsToLink = [ "/bin" ];
+              })
+            ];
+
+            config = {
+              Entrypoint = [ "/bin/wireguard-cni" ];
+            };
+          };
+        in
         {
           _module.args.pkgs = import inputs.nixpkgs {
             inherit system;
             overlays = [ inputs.gomod2nix.overlays.default ];
           };
 
-	  packages = {
-            inherit wireguard-cni;
-	    default = wireguard-cni;
-	  };
+          packages = {
+            inherit wireguard-cni ctr;
+            default = wireguard-cni;
+          };
 
           devShells.default = pkgs.mkShellNoCC {
             packages = with pkgs; [
+              docker
+              ginkgo
               go
               gomod2nix
               nixfmt
             ];
+
+            DOCKER = "${pkgs.docker}/bin/docker";
+            GINKGO = "${pkgs.ginkgo}/bin/ginkgo";
+            GO = "${pkgs.go}/bin/go";
+            GOMOD2NIX = "${pkgs.gomod2nix}/bin/gomod2nix";
           };
 
           treefmt.programs = {
