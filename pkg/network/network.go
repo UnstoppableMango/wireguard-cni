@@ -8,9 +8,8 @@ import (
 
 	"github.com/containernetworking/cni/pkg/types"
 	current "github.com/containernetworking/cni/pkg/types/100"
-	"github.com/vishvananda/netlink"
-
 	"github.com/unstoppablemango/wireguard-cni/pkg/config"
+	"github.com/vishvananda/netlink"
 )
 
 // ParseAddress parses a CIDR string preserving the host IP (not the network address).

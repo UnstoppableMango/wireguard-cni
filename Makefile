@@ -12,15 +12,27 @@ build: bin/wireguard-cni
 tidy: go.sum gomod2nix.toml
 docker container ctr: bin/image.tar.gz
 
-# Run unit tests only (no root required)
 test:
 	$(GINKGO) run -r --label-filter="!integration"
+
+cover: coverprofile.out
+	$(GO) tool cover -func=coverprofile.out
 
 load: bin/stream-image.sh
 	${CURDIR}/$< | ${DOCKER} load
 
 format fmt:
 	nix fmt
+
+# Run all tests inside a privileged Docker container (no sudo required)
+test-container:
+	$(DOCKER) run --rm \
+	  --privileged \
+	  -v "$(CURDIR):/src" \
+	  -v "$(GOPATH)/pkg/mod:/go/pkg/mod" \
+	  -w /src \
+	  $(GO_IMAGE) \
+	  $(GO) test -v ./...
 
 go.sum: go.mod ${GO_SRC}
 	$(GO) mod tidy
@@ -37,12 +49,5 @@ bin/stream-image.sh: ${GO_SRC}
 bin/image.tar.gz: bin/stream-image.sh
 	${CURDIR}/$< >$@
 
-# Run all tests inside a privileged Docker container (no sudo required)
-test-container:
-	$(DOCKER) run --rm \
-	  --privileged \
-	  -v "$(CURDIR):/src" \
-	  -v "$(GOPATH)/pkg/mod:/go/pkg/mod" \
-	  -w /src \
-	  $(GO_IMAGE) \
-	  $(GO) test -v ./...
+coverprofile.out: ${GO_SRC}
+	$(GINKGO) run -r --cover --label-filter="!integration"

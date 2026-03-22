@@ -3,6 +3,8 @@
 package main
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -16,12 +18,55 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+func newNetConf(privKey, peerPubKey, address string) []byte {
+	conf := map[string]any{
+		"cniVersion": "1.0.0",
+		"name":       "wg-test",
+		"type":       "wireguard-cni",
+		"address":    address,
+		"privateKey": privKey,
+		"peers": []map[string]any{
+			{
+				"publicKey":  peerPubKey,
+				"allowedIPs": []string{"10.0.0.0/8"},
+			},
+		},
+	}
+	b, _ := json.Marshal(conf)
+	return b
+}
+
+func newNetConfWithPrevResult(privKey, peerPubKey, address string, prevResult []byte) []byte {
+	conf := map[string]any{
+		"cniVersion": "1.0.0",
+		"name":       "wg-test",
+		"type":       "wireguard-cni",
+		"address":    address,
+		"privateKey": privKey,
+		"peers": []map[string]any{
+			{
+				"publicKey":  peerPubKey,
+				"allowedIPs": []string{"10.0.0.0/8"},
+			},
+		},
+		"prevResult": json.RawMessage(prevResult),
+	}
+	b, _ := json.Marshal(conf)
+	return b
+}
+
+func keyBase64(key wgtypes.Key) string {
+	b := [32]byte(key)
+	return base64.StdEncoding.EncodeToString(b[:])
+}
+
 var _ = Describe("Integration", Ordered, Label("integration"), func() {
 	var (
-		testNS   ns.NetNS
-		privKey  wgtypes.Key
-		peerKey  wgtypes.Key
-		confJSON []byte
+		testNS        ns.NetNS
+		privKey       wgtypes.Key
+		peerKey       wgtypes.Key
+		confJSON      []byte
+		addResultJSON []byte
 	)
 
 	BeforeAll(func() {
@@ -58,10 +103,15 @@ var _ = Describe("Integration", Ordered, Label("integration"), func() {
 			StdinData:   confJSON,
 		}
 
-		_, _, err := testutils.CmdAddWithArgs(args, func() error {
+		var (
+			err         error
+			resultBytes []byte
+		)
+		_, resultBytes, err = testutils.CmdAddWithArgs(args, func() error {
 			return cmdAdd(args)
 		})
 		Expect(err).NotTo(HaveOccurred())
+		addResultJSON = resultBytes
 
 		err = testNS.Do(func(_ ns.NetNS) error {
 			link, lerr := netlink.LinkByName("wg0")
@@ -104,6 +154,42 @@ var _ = Describe("Integration", Ordered, Label("integration"), func() {
 			return nil
 		})
 		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("CHECK succeeds after ADD", func() {
+		checkConf := newNetConfWithPrevResult(
+			keyBase64(privKey),
+			keyBase64(peerKey.PublicKey()),
+			"10.100.0.2/24",
+			addResultJSON,
+		)
+		args := &skel.CmdArgs{
+			ContainerID: "test-container",
+			Netns:       testNS.Path(),
+			IfName:      "wg0",
+			Args:        "",
+			Path:        "/opt/cni/bin",
+			StdinData:   checkConf,
+		}
+
+		err := testutils.CmdCheckWithArgs(args, func() error {
+			return cmdCheck(args)
+		})
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("CHECK fails without prevResult", func() {
+		args := &skel.CmdArgs{
+			ContainerID: "test-container",
+			Netns:       testNS.Path(),
+			IfName:      "wg0",
+			Args:        "",
+			Path:        "/opt/cni/bin",
+			StdinData:   confJSON,
+		}
+
+		err := cmdCheck(args)
+		Expect(err).To(MatchError(ContainSubstring("requires a prevResult")))
 	})
 
 	It("DEL removes the interface", func() {

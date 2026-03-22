@@ -6,3 +6,4 @@ bin/
 !.vscode/extensions.json
 .claude/*
 wireguard-cni
+*cover*

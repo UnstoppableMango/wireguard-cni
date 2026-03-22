@@ -8,12 +8,11 @@ import (
 	"net"
 	"time"
 
+	"github.com/unstoppablemango/wireguard-cni/pkg/config"
+	"github.com/unstoppablemango/wireguard-cni/pkg/network"
 	"github.com/vishvananda/netlink"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
-
-	"github.com/unstoppablemango/wireguard-cni/pkg/config"
-	"github.com/unstoppablemango/wireguard-cni/pkg/network"
 )
 
 // Setup creates and configures a WireGuard interface inside the current network namespace.
@@ -84,7 +83,8 @@ func Teardown(ifName string) error {
 	return nil
 }
 
-// Check verifies that the WireGuard interface exists and matches the configuration.
+// Check verifies that the WireGuard interface exists, has the configured address,
+// and that the device public key matches the configured private key.
 // Must be called from within an ns.Do() closure.
 func Check(ifName string, conf *config.Config) error {
 	link, err := netlink.LinkByName(ifName)
