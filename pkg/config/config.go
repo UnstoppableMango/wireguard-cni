@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"encoding/json"
@@ -24,7 +24,7 @@ type Config struct {
 	Peers      []PeerConfig `json:"peers"`
 }
 
-func parseConfig(stdin []byte) (*Config, error) {
+func Parse(stdin []byte) (*Config, error) {
 	var conf Config
 	if err := json.Unmarshal(stdin, &conf); err != nil {
 		return nil, fmt.Errorf("failed to parse network configuration: %v", err)
@@ -37,7 +37,7 @@ func parseConfig(stdin []byte) (*Config, error) {
 	return &conf, nil
 }
 
-func validateConfig(conf *Config) error {
+func Validate(conf *Config) error {
 	if conf.Address == "" {
 		return fmt.Errorf("address is required")
 	}

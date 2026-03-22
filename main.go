@@ -11,6 +11,10 @@ import (
 	"github.com/containernetworking/cni/pkg/version"
 	"github.com/containernetworking/plugins/pkg/ns"
 	bv "github.com/containernetworking/plugins/pkg/utils/buildversion"
+
+	"github.com/unstoppablemango/wireguard-cni/pkg/config"
+	"github.com/unstoppablemango/wireguard-cni/pkg/network"
+	"github.com/unstoppablemango/wireguard-cni/pkg/wireguard"
 )
 
 func init() {
@@ -20,7 +24,7 @@ func init() {
 }
 
 func cmdAdd(args *skel.CmdArgs) error {
-	conf, err := parseConfig(args.StdinData)
+	conf, err := config.Parse(args.StdinData)
 	if err != nil {
 		return err
 	}
@@ -29,7 +33,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return fmt.Errorf("wireguard-cni must be called as the first plugin")
 	}
 
-	if err := validateConfig(conf); err != nil {
+	if err := config.Validate(conf); err != nil {
 		return err
 	}
 
@@ -40,12 +44,12 @@ func cmdAdd(args *skel.CmdArgs) error {
 	defer netns.Close()
 
 	if err := netns.Do(func(_ ns.NetNS) error {
-		return setupWireGuard(args.IfName, conf)
+		return wireguard.Setup(args.IfName, conf)
 	}); err != nil {
 		return err
 	}
 
-	result, err := buildCNIResult(conf.CNIVersion, args.IfName, args.Netns, conf.Address)
+	result, err := network.BuildCNIResult(conf.CNIVersion, args.IfName, args.Netns, conf.Address)
 	if err != nil {
 		return err
 	}
@@ -60,12 +64,12 @@ func cmdDel(args *skel.CmdArgs) error {
 	}
 
 	return ns.WithNetNSPath(args.Netns, func(_ ns.NetNS) error {
-		return teardownWireGuard(args.IfName)
+		return wireguard.Teardown(args.IfName)
 	})
 }
 
 func cmdCheck(args *skel.CmdArgs) error {
-	conf, err := parseConfig(args.StdinData)
+	conf, err := config.Parse(args.StdinData)
 	if err != nil {
 		return err
 	}
@@ -74,7 +78,7 @@ func cmdCheck(args *skel.CmdArgs) error {
 		return fmt.Errorf("cmdCheck requires a prevResult")
 	}
 
-	if err := validateConfig(conf); err != nil {
+	if err := config.Validate(conf); err != nil {
 		return err
 	}
 
@@ -85,7 +89,7 @@ func cmdCheck(args *skel.CmdArgs) error {
 	defer netns.Close()
 
 	return netns.Do(func(_ ns.NetNS) error {
-		return checkWireGuard(args.IfName, conf)
+		return wireguard.Check(args.IfName, conf)
 	})
 }
 

@@ -1,6 +1,6 @@
 //go:build linux
 
-package main
+package network
 
 import (
 	"fmt"
@@ -9,10 +9,12 @@ import (
 	"github.com/containernetworking/cni/pkg/types"
 	current "github.com/containernetworking/cni/pkg/types/100"
 	"github.com/vishvananda/netlink"
+
+	"github.com/unstoppablemango/wireguard-cni/pkg/config"
 )
 
-// parseAddress parses a CIDR string preserving the host IP (not the network address).
-func parseAddress(cidr string) (*netlink.Addr, error) {
+// ParseAddress parses a CIDR string preserving the host IP (not the network address).
+func ParseAddress(cidr string) (*netlink.Addr, error) {
 	ip, ipnet, err := net.ParseCIDR(cidr)
 	if err != nil {
 		return nil, fmt.Errorf("invalid CIDR %q: %v", cidr, err)
@@ -20,8 +22,8 @@ func parseAddress(cidr string) (*netlink.Addr, error) {
 	return &netlink.Addr{IPNet: &net.IPNet{IP: ip, Mask: ipnet.Mask}}, nil
 }
 
-// addPeerRoutes adds a route for each peer AllowedIP via the given link.
-func addPeerRoutes(link netlink.Link, peers []PeerConfig) error {
+// AddPeerRoutes adds a route for each peer AllowedIP via the given link.
+func AddPeerRoutes(link netlink.Link, peers []config.PeerConfig) error {
 	for _, peer := range peers {
 		for _, allowedIP := range peer.AllowedIPs {
 			_, dst, err := net.ParseCIDR(allowedIP)
@@ -40,9 +42,9 @@ func addPeerRoutes(link netlink.Link, peers []PeerConfig) error {
 	return nil
 }
 
-// buildCNIResult constructs the CNI result for a WireGuard interface.
+// BuildCNIResult constructs the CNI result for a WireGuard interface.
 // WireGuard uses AllowedIPs for routing so no gateway is set.
-func buildCNIResult(cniVersion, ifName, netnsPath, address string) (*current.Result, error) {
+func BuildCNIResult(cniVersion, ifName, netnsPath, address string) (*current.Result, error) {
 	ip, ipnet, err := net.ParseCIDR(address)
 	if err != nil {
 		return nil, fmt.Errorf("invalid address %q: %v", address, err)
