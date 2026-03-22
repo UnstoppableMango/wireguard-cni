@@ -12,4 +12,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - run: make test
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Load WireGuard kernel module
+        run: sudo modprobe wireguard
+
+      - name: Test (in container)
+        run: make test-container

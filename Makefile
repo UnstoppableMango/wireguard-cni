@@ -1,3 +1,7 @@
+GOVERSION ?= $(shell go env GOVERSION | sed 's/go//')
+GO_IMAGE  ?= golang:$(GOVERSION)
+GOPATH    ?= $(shell go env GOPATH)
+
 build: bin/wireguard-cni
 tidy: go.sum
 
@@ -15,4 +19,14 @@ test-unit:
 test:
 	sudo go test -v ./...
 
-.PHONY: build tidy test test-unit
+# Run all tests inside a privileged Docker container (no sudo required)
+test-container:
+	docker run --rm \
+	  --privileged \
+	  -v "$(CURDIR):/src" \
+	  -v "$(GOPATH)/pkg/mod:/go/pkg/mod" \
+	  -w /src \
+	  $(GO_IMAGE) \
+	  go test -v ./...
+
+.PHONY: build tidy test test-unit test-container
