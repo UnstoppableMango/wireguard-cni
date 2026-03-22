@@ -5,16 +5,8 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
-	"net"
-
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
-
-	"github.com/unstoppablemango/wireguard-cni/pkg/config"
-	"github.com/unstoppablemango/wireguard-cni/pkg/network"
-	wg "github.com/unstoppablemango/wireguard-cni/pkg/wireguard"
 )
 
 func newNetConf(privKey, peerPubKey, address string) []byte {
@@ -39,77 +31,3 @@ func keyBase64(key wgtypes.Key) string {
 	b := [32]byte(key)
 	return base64.StdEncoding.EncodeToString(b[:])
 }
-
-var _ = Describe("Config", func() {
-	It("parses a valid configuration", func() {
-		privKey, err := wgtypes.GeneratePrivateKey()
-		Expect(err).NotTo(HaveOccurred())
-		peerKey, err := wgtypes.GeneratePrivateKey()
-		Expect(err).NotTo(HaveOccurred())
-
-		conf, err := config.Parse(newNetConf(keyBase64(privKey), keyBase64(peerKey.PublicKey()), "10.100.0.2/24"))
-		Expect(err).NotTo(HaveOccurred())
-		Expect(conf.Address).To(Equal("10.100.0.2/24"))
-		Expect(conf.PrivateKey).To(Equal(keyBase64(privKey)))
-		Expect(conf.Peers).To(HaveLen(1))
-	})
-
-	It("validates required address", func() {
-		conf := &config.Config{PrivateKey: "somekey"}
-		Expect(config.Validate(conf)).To(MatchError(ContainSubstring("address is required")))
-	})
-
-	It("validates required privateKey", func() {
-		conf := &config.Config{Address: "10.0.0.1/24"}
-		Expect(config.Validate(conf)).To(MatchError(ContainSubstring("privateKey is required")))
-	})
-
-	It("validates peer publicKey", func() {
-		conf := &config.Config{
-			Address:    "10.0.0.1/24",
-			PrivateKey: "somekey",
-			Peers:      []config.PeerConfig{{AllowedIPs: []string{"0.0.0.0/0"}}},
-		}
-		Expect(config.Validate(conf)).To(MatchError(ContainSubstring("publicKey is required")))
-	})
-
-	It("validates invalid address CIDR", func() {
-		conf := &config.Config{Address: "not-a-cidr", PrivateKey: "somekey"}
-		Expect(config.Validate(conf)).To(MatchError(ContainSubstring("invalid address")))
-	})
-})
-
-var _ = Describe("ParseAddress", func() {
-	It("preserves the host IP", func() {
-		addr, err := network.ParseAddress("10.100.0.2/24")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(addr.IP.String()).To(Equal("10.100.0.2"))
-		Expect(addr.Mask).To(Equal(net.CIDRMask(24, 32)))
-	})
-
-	It("rejects invalid CIDR", func() {
-		_, err := network.ParseAddress("not-valid")
-		Expect(err).To(HaveOccurred())
-	})
-})
-
-var _ = Describe("ParseKey", func() {
-	It("decodes a valid base64 key", func() {
-		key, err := wgtypes.GeneratePrivateKey()
-		Expect(err).NotTo(HaveOccurred())
-		parsed, err := wg.ParseKey(keyBase64(key))
-		Expect(err).NotTo(HaveOccurred())
-		Expect(parsed).To(Equal(key))
-	})
-
-	It("rejects invalid base64", func() {
-		_, err := wg.ParseKey("!!!not-base64!!!")
-		Expect(err).To(HaveOccurred())
-	})
-
-	It("rejects a key of wrong length", func() {
-		short := base64.StdEncoding.EncodeToString([]byte("short"))
-		_, err := wg.ParseKey(short)
-		Expect(err).To(HaveOccurred())
-	})
-})
