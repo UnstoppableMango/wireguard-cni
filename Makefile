@@ -43,8 +43,8 @@ go.sum: go.mod ${GO_SRC}
 gomod2nix.toml: go.sum
 	$(GOMOD2NIX) generate
 
-bin/wireguard-cni: ${GO_SRC}
-	$(GO) build -o $@ .
+bin/wireguard-cni: | result/bin/wireguard-cni
+	mkdir -p ${@D} && ln -sf ${CURDIR}/$| ${CURDIR}/$@
 
 bin/stream-image.sh: ${GO_SRC}
 	nix build .#ctr --out-link $@
@@ -54,3 +54,6 @@ bin/image.tar.gz: bin/stream-image.sh
 
 coverprofile.out: ${GO_SRC}
 	$(GINKGO) run -r --cover --label-filter="!integration"
+
+result/bin/wireguard-cni: ${GO_SRC}
+	nix build .#wireguard-cni

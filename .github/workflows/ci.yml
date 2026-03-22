@@ -10,16 +10,45 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v6.0.2
+      - uses: cachix/install-nix-action@v31.10.1
         with:
-          go-version-file: go.mod
-          cache: true
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Load WireGuard kernel module
-        run: sudo modprobe wireguard
+      - uses: DeterminateSystems/magic-nix-cache-action@v13
 
-      - name: Test (in container)
-        run: make test-privileged
+      - run: make build
+
+  container-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: docker/setup-docker-action@v5.0.0
+
+      - run: sudo modprobe wireguard
+      - run: make test-privileged
+
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: cachix/install-nix-action@v31.10.1
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: DeterminateSystems/magic-nix-cache-action@v13
+
+      - run: make check
+
+  clean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: cachix/install-nix-action@v31.10.1
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: DeterminateSystems/magic-nix-cache-action@v13
+
+      - run: make gomod2nix.toml
+      - run: git diff --exit-code

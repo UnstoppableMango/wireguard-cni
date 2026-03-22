@@ -7,3 +7,4 @@ bin/
 .claude/*
 wireguard-cni
 *cover*
+/result
