@@ -13,26 +13,31 @@ type Name string
 
 func (n Name) String() string { return string(n) }
 
-func (n Name) Add(addr *netlink.Addr, conf *wgtypes.Config) error {
-	link, err := n.newLink()
-	if err != nil {
-		_ = netlink.LinkDel(link)
+func (n Name) Add(addr *netlink.Addr, conf *wgtypes.Config) (err error) {
+	link := n.newLink()
+	if err = netlink.LinkAdd(link); err != nil {
+		return fmt.Errorf("failed to add link: %v", err)
+	}
+
+	// Resolve the link after creation to get the index.
+	if link, err = n.link(); err != nil {
 		return fmt.Errorf("failed to create link: %v", err)
 	}
-	return n.setup(link, addr, conf)
+
+	if err := n.setup(link, addr, conf); err != nil {
+		_ = netlink.LinkDel(link)
+		return fmt.Errorf("failed to setup link: %v", err)
+	}
+
+	return nil
 }
 
-func (n Name) newLink() (netlink.Link, error) {
+func (n Name) newLink() netlink.Link {
 	link := &netlink.Wireguard{
 		LinkAttrs: netlink.NewLinkAttrs(),
 	}
 	link.Name = n.String()
-	if err := netlink.LinkAdd(link); err != nil {
-		return nil, err
-	}
-
-	// Resolve the link after creation to get the index.
-	return n.link()
+	return link
 }
 
 // setup creates and configures a WireGuard interface inside the current network namespace.
