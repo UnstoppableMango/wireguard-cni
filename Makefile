@@ -3,6 +3,7 @@ GINKGO    ?= ginkgo
 GO        ?= go
 GOMOD2NIX ?= gomod2nix
 
+VERSION   ?= v0.0.1-alpha
 GOVERSION ?= $(shell $(GO) env GOVERSION | sed 's/go//')
 GO_IMAGE  ?= golang:$(GOVERSION)
 GOPATH    ?= $(shell $(GO) env GOPATH)
@@ -12,9 +13,6 @@ GO_SRC := $(shell find . -name '*.go')
 build: bin/wireguard-cni
 tidy: go.sum gomod2nix.toml
 docker container ctr: bin/image.tar.gz
-
-test:
-	$(GINKGO) run -r --label-filter="!integration"
 
 cover: coverprofile.out
 	$(GO) tool cover -func=coverprofile.out
@@ -28,8 +26,11 @@ format fmt:
 check:
 	nix flake check
 
-# Run all tests inside a privileged Docker container (no sudo required)
-test-privileged:
+test-image:
+	${CURDIR}/scripts/test.sh
+
+.PHONY: test test-unit
+test:
 	$(DOCKER) run --rm \
 	  --privileged \
 	  -v "$(CURDIR):/src" \
@@ -38,14 +39,8 @@ test-privileged:
 	  $(GO_IMAGE) \
 	  go test -v ./...
 
-test-e2e:
-	$(DOCKER) run --rm \
-	  --privileged \
-	  -v "$(CURDIR):/src" \
-	  -v "$(GOPATH)/pkg/mod:/go/pkg/mod" \
-	  -w /src \
-	  $(GO_IMAGE) \
-	  go test -v . -args --ginkgo.label-filter="e2e"
+test-unit:
+	$(GINKGO) run -r --label-filter="!integration"
 
 go.sum: go.mod ${GO_SRC}
 	$(GO) mod tidy

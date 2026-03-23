@@ -1,6 +1,4 @@
-//go:build linux
-
-package main
+package e2e_test
 
 import (
 	"encoding/base64"
@@ -9,6 +7,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/unstoppablemango/wireguard-cni/pkg/funcs"
 
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/plugins/pkg/ns"
@@ -60,7 +59,7 @@ func keyBase64(key wgtypes.Key) string {
 	return base64.StdEncoding.EncodeToString(b[:])
 }
 
-var _ = Describe("Integration", Ordered, Label("integration"), func() {
+var _ = Describe("Integration", Ordered, Label("e2e"), func() {
 	var (
 		testNS        ns.NetNS
 		privKey       wgtypes.Key
@@ -108,7 +107,7 @@ var _ = Describe("Integration", Ordered, Label("integration"), func() {
 			resultBytes []byte
 		)
 		_, resultBytes, err = testutils.CmdAddWithArgs(args, func() error {
-			return cmdAdd(args)
+			return funcs.Add(args)
 		})
 		Expect(err).NotTo(HaveOccurred())
 		addResultJSON = resultBytes
@@ -173,7 +172,7 @@ var _ = Describe("Integration", Ordered, Label("integration"), func() {
 		}
 
 		err := testutils.CmdCheckWithArgs(args, func() error {
-			return cmdCheck(args)
+			return funcs.Check(args)
 		})
 		Expect(err).NotTo(HaveOccurred())
 	})
@@ -188,7 +187,7 @@ var _ = Describe("Integration", Ordered, Label("integration"), func() {
 			StdinData:   confJSON,
 		}
 
-		err := cmdCheck(args)
+		err := funcs.Check(args)
 		Expect(err).To(MatchError(ContainSubstring("requires a prevResult")))
 	})
 
@@ -203,7 +202,7 @@ var _ = Describe("Integration", Ordered, Label("integration"), func() {
 		}
 
 		err := testutils.CmdDelWithArgs(args, func() error {
-			return cmdDel(args)
+			return funcs.Del(args)
 		})
 		Expect(err).NotTo(HaveOccurred())
 	})
@@ -219,7 +218,7 @@ var _ = Describe("Integration", Ordered, Label("integration"), func() {
 		}
 
 		err := testutils.CmdDelWithArgs(args, func() error {
-			return cmdDel(args)
+			return funcs.Del(args)
 		})
 		Expect(err).NotTo(HaveOccurred())
 	})

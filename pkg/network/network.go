@@ -60,7 +60,7 @@ func BuildCNIResult(cniVersion, ifName, netnsPath, address string) (*current.Res
 		},
 		IPs: []*current.IPConfig{
 			{
-				Interface: current.Int(ifIdx),
+				Interface: new(ifIdx),
 				Address: net.IPNet{
 					IP:   ip,
 					Mask: ipnet.Mask,

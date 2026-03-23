@@ -17,7 +17,7 @@ type PeerConfig struct {
 }
 
 type Config struct {
-	types.NetConf
+	types.PluginConf
 	Address    string       `json:"address"`
 	PrivateKey string       `json:"privateKey"`
 	ListenPort int          `json:"listenPort,omitempty"`
@@ -30,7 +30,7 @@ func Parse(stdin []byte) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse network configuration: %v", err)
 	}
 
-	if err := version.ParsePrevResult(&conf.NetConf); err != nil {
+	if err := version.ParsePrevResult(&conf.PluginConf); err != nil {
 		return nil, fmt.Errorf("could not parse prevResult: %v", err)
 	}
 
@@ -44,7 +44,6 @@ func Validate(conf *Config) error {
 	if _, _, err := net.ParseCIDR(conf.Address); err != nil {
 		return fmt.Errorf("invalid address %q: %v", conf.Address, err)
 	}
-
 	if conf.PrivateKey == "" {
 		return fmt.Errorf("privateKey is required")
 	}

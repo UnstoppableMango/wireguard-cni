@@ -1,6 +1,4 @@
-//go:build linux
-
-package main
+package e2e_test
 
 import (
 	"encoding/json"
@@ -15,6 +13,7 @@ import (
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/testutils"
+	"github.com/unstoppablemango/wireguard-cni/pkg/funcs"
 	"github.com/vishvananda/netlink"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -262,7 +261,7 @@ var _ = Describe("E2E", Ordered, Label("e2e"), func() {
 				StdinData:   confJSON,
 			}
 			_ = testutils.CmdDelWithArgs(args, func() error {
-				return cmdDel(args)
+				return funcs.Del(args)
 			})
 			clientNS.Close()
 			testutils.UnmountNS(clientNS)
@@ -292,7 +291,7 @@ var _ = Describe("E2E", Ordered, Label("e2e"), func() {
 		}
 
 		_, _, err := testutils.CmdAddWithArgs(args, func() error {
-			return cmdAdd(args)
+			return funcs.Add(args)
 		})
 		Expect(err).NotTo(HaveOccurred())
 	})

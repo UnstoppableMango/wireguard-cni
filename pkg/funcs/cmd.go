@@ -1,22 +1,17 @@
-//go:build linux
-
-package main
+package funcs
 
 import (
 	"fmt"
 
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
-	"github.com/containernetworking/cni/pkg/version"
 	"github.com/containernetworking/plugins/pkg/ns"
-	bv "github.com/containernetworking/plugins/pkg/utils/buildversion"
-
 	"github.com/unstoppablemango/wireguard-cni/pkg/config"
 	"github.com/unstoppablemango/wireguard-cni/pkg/network"
 	"github.com/unstoppablemango/wireguard-cni/pkg/wireguard"
 )
 
-func cmdAdd(args *skel.CmdArgs) error {
+func Add(args *skel.CmdArgs) error {
 	conf, err := config.Parse(args.StdinData)
 	if err != nil {
 		return err
@@ -50,18 +45,18 @@ func cmdAdd(args *skel.CmdArgs) error {
 	return types.PrintResult(result, conf.CNIVersion)
 }
 
-func cmdDel(args *skel.CmdArgs) error {
+func Del(args *skel.CmdArgs) error {
 	if args.Netns == "" {
 		// Namespace already gone; nothing to do.
 		return nil
 	}
 
-	return ns.WithNetNSPath(args.Netns, func(_ ns.NetNS) error {
+	return ns.WithNetNSPath(args.Netns, func(ns.NetNS) error {
 		return wireguard.Teardown(args.IfName)
 	})
 }
 
-func cmdCheck(args *skel.CmdArgs) error {
+func Check(args *skel.CmdArgs) error {
 	conf, err := config.Parse(args.StdinData)
 	if err != nil {
 		return err
@@ -84,12 +79,4 @@ func cmdCheck(args *skel.CmdArgs) error {
 	return netns.Do(func(_ ns.NetNS) error {
 		return wireguard.Check(args.IfName, conf)
 	})
-}
-
-func main() {
-	skel.PluginMainFuncs(skel.CNIFuncs{
-		Add:   cmdAdd,
-		Del:   cmdDel,
-		Check: cmdCheck,
-	}, version.All, bv.BuildString("wireguard-cni"))
 }

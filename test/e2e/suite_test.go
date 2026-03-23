@@ -1,6 +1,4 @@
-//go:build linux
-
-package wireguard_test
+package e2e_test
 
 import (
 	"testing"
@@ -9,7 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestWireguard(t *testing.T) {
+func TestWireguardCNI(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Wireguard Suite")
+	RunSpecs(t, "WireGuard CNI Suite")
 }

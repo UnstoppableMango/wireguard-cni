@@ -1,9 +1,6 @@
-//go:build linux
-
 package wireguard
 
 import (
-	"encoding/base64"
 	"fmt"
 	"net"
 	"time"
@@ -124,7 +121,7 @@ func Check(ifName string, conf *config.Config) error {
 		return fmt.Errorf("failed to get wireguard device %s: %v", ifName, err)
 	}
 
-	privateKey, err := ParseKey(conf.PrivateKey)
+	privateKey, err := wgtypes.ParseKey(conf.PrivateKey)
 	if err != nil {
 		return fmt.Errorf("invalid privateKey: %v", err)
 	}
@@ -137,15 +134,6 @@ func Check(ifName string, conf *config.Config) error {
 	return nil
 }
 
-// ParseKey decodes a base64-encoded WireGuard key.
-func ParseKey(b64 string) (wgtypes.Key, error) {
-	b, err := base64.StdEncoding.DecodeString(b64)
-	if err != nil {
-		return wgtypes.Key{}, fmt.Errorf("failed to base64-decode key: %v", err)
-	}
-	return wgtypes.NewKey(b)
-}
-
 // configure opens a wgctrl client and applies the WireGuard configuration.
 // Must be called from within an ns.Do() closure.
 func configure(ifName string, conf *config.Config) error {
@@ -155,7 +143,7 @@ func configure(ifName string, conf *config.Config) error {
 	}
 	defer client.Close()
 
-	privateKey, err := ParseKey(conf.PrivateKey)
+	privateKey, err := wgtypes.ParseKey(conf.PrivateKey)
 	if err != nil {
 		return fmt.Errorf("invalid privateKey: %v", err)
 	}
@@ -186,7 +174,7 @@ func buildPeerConfigs(peers []config.PeerConfig) ([]wgtypes.PeerConfig, error) {
 	result := make([]wgtypes.PeerConfig, 0, len(peers))
 
 	for i, p := range peers {
-		pubKey, err := ParseKey(p.PublicKey)
+		pubKey, err := wgtypes.ParseKey(p.PublicKey)
 		if err != nil {
 			return nil, fmt.Errorf("peer %d: invalid publicKey: %v", i, err)
 		}
