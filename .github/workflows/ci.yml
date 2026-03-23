@@ -19,11 +19,16 @@ jobs:
 
       - run: make build
 
-  container-test:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: docker/setup-docker-action@v5.0.0
+
+      - uses: actions/setup-go@v6.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
 
       - run: sudo modprobe wireguard
       - run: make test
