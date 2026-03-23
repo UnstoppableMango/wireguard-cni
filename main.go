@@ -13,11 +13,11 @@ import (
 	"github.com/unstoppablemango/wireguard-cni/pkg/wireguard"
 )
 
-const cniName = "wireguard-cni"
+const pluginName = "wireguard-cni"
 
 var (
-	ErrFirstPlugin = fmt.Errorf("%s must be called as the first plugin", cniName)
-	ErrPrevResult  = fmt.Errorf("%s requires a prevResult", cniName)
+	ErrFirstPlugin = fmt.Errorf("%s must be called as the first plugin", pluginName)
+	ErrPrevResult  = fmt.Errorf("%s requires a prevResult", pluginName)
 )
 
 func cmdAdd(args *skel.CmdArgs) error {
@@ -56,17 +56,9 @@ func cmdCheck(args *skel.CmdArgs) error {
 	if conf.PrevResult == nil {
 		return ErrPrevResult
 	}
-	addr, wg, err := conf.Wireguard()
-	if err != nil {
-		return err
-	}
 
 	return ns.WithNetNSPath(args.Netns, func(ns.NetNS) error {
-		return wireguard.Check(
-			args.IfName,
-			addr,
-			wg.PrivateKey.PublicKey(),
-		)
+		return wireguard.Check(args.IfName, conf)
 	})
 }
 
@@ -75,5 +67,5 @@ func main() {
 		Add:   cmdAdd,
 		Del:   cmdDel,
 		Check: cmdCheck,
-	}, version.All, bv.BuildString("wireguard-cni"))
+	}, version.All, bv.BuildString(pluginName))
 }
