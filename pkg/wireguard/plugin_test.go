@@ -133,24 +133,6 @@ var _ = Describe("Add", func() {
 	})
 })
 
-var _ = Describe("Delete", func() {
-	It("delegates to the link manager", func() {
-		mgr := &fakeLinkManager{}
-
-		err := wireguard.Delete(mgr)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(mgr.deleted).To(BeTrue())
-	})
-
-	It("returns error when Delete fails", func() {
-		mgr := &fakeLinkManager{deleteErr: errors.New("delete failed")}
-
-		err := wireguard.Delete(mgr)
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("failed to delete link"))
-	})
-})
-
 var _ = Describe("Check", func() {
 	It("succeeds when address and public key match", func() {
 		conf, privKey := newTestConfig()

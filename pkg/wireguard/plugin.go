@@ -26,15 +26,6 @@ func Add(mgr network.LinkManager, conf *config.Config) error {
 	return nil
 }
 
-// Delete removes the WireGuard interface. Idempotent: not-found is not an error.
-// Must be called from within an ns.Do() closure.
-func Delete(mgr network.LinkManager) error {
-	if err := mgr.Delete(); err != nil {
-		return fmt.Errorf("failed to delete link: %w", err)
-	}
-	return nil
-}
-
 // Check verifies that the WireGuard interface exists, has the configured address,
 // and that the device public key matches the configured private key.
 // Must be called from within an ns.Do() closure.
