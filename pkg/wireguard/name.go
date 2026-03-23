@@ -2,9 +2,10 @@ package wireguard
 
 import (
 	"fmt"
+	"net"
 	"slices"
 
-	"github.com/vishvananda/netlink"
+	"github.com/unstoppablemango/wireguard-cni/pkg/network"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -13,57 +14,39 @@ type Name string
 
 func (n Name) String() string { return string(n) }
 
-func (n Name) Add(addr *netlink.Addr, conf *wgtypes.Config) (err error) {
-	link := n.newLink()
-	if err = netlink.LinkAdd(link); err != nil {
+func (n Name) Add(addr *net.IPNet, conf *wgtypes.Config) (err error) {
+	mgr := network.New(n.String())
+	link, err := mgr.Create()
+	if err != nil {
 		return fmt.Errorf("failed to add link: %v", err)
 	}
-
-	// Resolve the link after creation to get the index.
-	if link, err = n.link(); err != nil {
-		return fmt.Errorf("failed to create link: %v", err)
-	}
-
 	if err := n.setup(link, addr, conf); err != nil {
-		_ = netlink.LinkDel(link)
+		_ = mgr.Delete()
 		return fmt.Errorf("failed to setup link: %v", err)
 	}
-
 	return nil
-}
-
-func (n Name) newLink() netlink.Link {
-	link := &netlink.Wireguard{
-		LinkAttrs: netlink.NewLinkAttrs(),
-	}
-	link.Name = n.String()
-	return link
 }
 
 // setup creates and configures a WireGuard interface inside the current network namespace.
 // Must be called from within an ns.Do() closure.
-func (n Name) setup(link netlink.Link, addr *netlink.Addr, conf *wgtypes.Config) error {
-	if err := netlink.AddrAdd(link, addr); err != nil {
+func (n Name) setup(link network.Link, addr *net.IPNet, conf *wgtypes.Config) error {
+	if err := link.AssignAddress(addr); err != nil {
 		return fmt.Errorf("adding address: %w", err)
 	}
 	if err := n.configureDevice(*conf); err != nil {
 		return fmt.Errorf("configuring device: %w", err)
 	}
-	if err := netlink.LinkSetUp(link); err != nil {
+	if err := link.BringUp(); err != nil {
 		return fmt.Errorf("setting link up: %w", err)
 	}
-
 	for _, peer := range conf.Peers {
 		for _, allowedIP := range peer.AllowedIPs {
-			if err := netlink.RouteAdd(&netlink.Route{
-				LinkIndex: link.Attrs().Index,
-				Dst:       &allowedIP,
-			}); err != nil {
+			allowedIP := allowedIP
+			if err := link.AddRoute(&allowedIP); err != nil {
 				return fmt.Errorf("adding route: %w", err)
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -81,7 +64,7 @@ func (n Name) configureDevice(conf wgtypes.Config) error {
 // Check verifies that the WireGuard interface exists, has the configured address,
 // and that the device public key matches the configured private key.
 // Must be called from within an ns.Do() closure.
-func (n Name) Check(addr *netlink.Addr, pubKey wgtypes.Key) error {
+func (n Name) Check(addr *net.IPNet, pubKey wgtypes.Key) error {
 	if exists, err := n.containsAddr(addr); err != nil {
 		return fmt.Errorf("check: %w", err)
 	} else if !exists {
@@ -97,18 +80,18 @@ func (n Name) Check(addr *netlink.Addr, pubKey wgtypes.Key) error {
 	return nil
 }
 
-func (n Name) containsAddr(addr *netlink.Addr) (bool, error) {
-	link, err := n.link()
+func (n Name) containsAddr(addr *net.IPNet) (bool, error) {
+	link, err := network.New(n.String()).Get()
 	if err != nil {
 		return false, fmt.Errorf("link by name: %w", err)
 	}
-
-	addrs, err := netlink.AddrList(link, netlink.FAMILY_ALL)
+	addrs, err := link.Addresses()
 	if err != nil {
 		return false, fmt.Errorf("ip addr show: %w", err)
 	}
-
-	return slices.ContainsFunc(addrs, addr.Equal), nil
+	return slices.ContainsFunc(addrs, func(a *net.IPNet) bool {
+		return a.String() == addr.String()
+	}), nil
 }
 
 func (n Name) hasPublicKey(pubKey wgtypes.Key) (bool, error) {
@@ -131,21 +114,8 @@ func (n Name) getDevice() (*wgtypes.Device, error) {
 // Delete removes the WireGuard interface. Idempotent: not-found is not an error.
 // Must be called from within an ns.Do() closure.
 func (n Name) Delete() error {
-	link, err := n.link()
-	if err != nil {
-		if _, ok := err.(netlink.LinkNotFoundError); ok {
-			return nil
-		}
-		return fmt.Errorf("failed to find link %s: %v", n, err)
-	}
-
-	if err := netlink.LinkDel(link); err != nil {
+	if err := network.New(n.String()).Delete(); err != nil {
 		return fmt.Errorf("failed to delete link %s: %w", n, err)
 	}
-
 	return nil
-}
-
-func (n Name) link() (netlink.Link, error) {
-	return netlink.LinkByName(n.String())
 }
