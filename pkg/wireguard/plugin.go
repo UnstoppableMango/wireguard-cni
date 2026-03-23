@@ -10,12 +10,11 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-func Add(ifName string, conf *config.Config) error {
+func Add(mgr network.LinkManager, conf *config.Config) error {
 	addr, wg, err := conf.Wireguard()
 	if err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
-	mgr := network.New(ifName)
 	link, err := mgr.Create()
 	if err != nil {
 		return fmt.Errorf("failed to add link: %v", err)
@@ -29,9 +28,9 @@ func Add(ifName string, conf *config.Config) error {
 
 // Delete removes the WireGuard interface. Idempotent: not-found is not an error.
 // Must be called from within an ns.Do() closure.
-func Delete(ifName string) error {
-	if err := network.New(ifName).Delete(); err != nil {
-		return fmt.Errorf("failed to delete link %s: %w", ifName, err)
+func Delete(mgr network.LinkManager) error {
+	if err := mgr.Delete(); err != nil {
+		return fmt.Errorf("failed to delete link: %w", err)
 	}
 	return nil
 }
@@ -39,12 +38,12 @@ func Delete(ifName string) error {
 // Check verifies that the WireGuard interface exists, has the configured address,
 // and that the device public key matches the configured private key.
 // Must be called from within an ns.Do() closure.
-func Check(ifName string, conf *config.Config) error {
+func Check(mgr network.LinkManager, conf *config.Config) error {
 	addr, wg, err := conf.Wireguard()
 	if err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
-	link, err := network.New(ifName).Get()
+	link, err := mgr.Get()
 	if err != nil {
 		return fmt.Errorf("check: %w", err)
 	}
@@ -55,14 +54,14 @@ func Check(ifName string, conf *config.Config) error {
 	if !slices.ContainsFunc(addrs, func(a *net.IPNet) bool {
 		return a.String() == addr.String()
 	}) {
-		return fmt.Errorf("address %s not found on %s", addr, ifName)
+		return fmt.Errorf("address %s not found on link", addr)
 	}
 	key, err := link.PublicKey()
 	if err != nil {
 		return fmt.Errorf("check: %w", err)
 	}
 	if key != wg.PrivateKey.PublicKey() {
-		return fmt.Errorf("public key mismatch on %s", ifName)
+		return fmt.Errorf("public key mismatch on link")
 	}
 	return nil
 }
