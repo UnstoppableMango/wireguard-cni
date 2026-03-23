@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"net"
 	"testing"
 	"time"
@@ -20,57 +19,63 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+const defaultInterface = "wg0"
+
 func TestWireguardCNI(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "WireGuard CNI Suite")
 }
 
+// assignAddrAndUp assigns a CIDR address to the named interface and brings it up.
+// Must be called from within the target network namespace.
 func assignAddrAndUp(ifName, cidr string) {
 	GinkgoHelper()
-
-	By("finding link " + ifName)
 	link, err := netlink.LinkByName(ifName)
 	Expect(err).NotTo(HaveOccurred())
-
-	By("assigning address " + cidr)
 	addr, err := netlink.ParseAddr(cidr)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(netlink.AddrAdd(link, addr)).To(Succeed())
-
-	By("bringing up " + ifName)
 	Expect(netlink.LinkSetUp(link)).To(Succeed())
 }
 
-func newE2ENetConf(privKey, peerPubKey, address, endpoint string) []byte {
-	conf := map[string]any{
-		"cniVersion": "1.0.0",
-		"name":       "wg-e2e",
-		"type":       "wireguard-cni",
-		"address":    address,
-		"privateKey": privKey,
-		"peers": []map[string]any{
-			{
-				"publicKey":           peerPubKey,
-				"allowedIPs":          []string{"10.99.0.1/32"},
-				"endpoint":            endpoint,
-				"persistentKeepalive": 5,
-			},
-		},
-	}
-	b, _ := json.Marshal(conf)
-	return b
+// createVethPair creates a connected veth pair: hostName stays in the root
+// namespace with hostCIDR assigned, peerName is placed in targetNS with peerCIDR.
+func createVethPair(hostName, peerName, hostCIDR, peerCIDR string, targetNS ns.NetNS) {
+	GinkgoHelper()
+	_, _, err := ip.SetupVethWithName(hostName, peerName, 1500, "", targetNS)
+	Expect(err).NotTo(HaveOccurred())
+	assignAddrAndUp(hostName, hostCIDR)
+	Expect(targetNS.Do(func(_ ns.NetNS) error {
+		assignAddrAndUp(peerName, peerCIDR)
+		return nil
+	})).To(Succeed())
 }
 
-func newNetConf(privKey, peerPubKey, address string, prevResult []byte) []byte {
+// addDefaultRouteInNS sets the default gateway inside targetNS, routing
+// outbound traffic via viaIface to gateway.
+func addDefaultRouteInNS(targetNS ns.NetNS, gateway, viaIface string) {
+	GinkgoHelper()
+	Expect(targetNS.Do(func(_ ns.NetNS) error {
+		link, err := netlink.LinkByName(viaIface)
+		if err != nil {
+			return err
+		}
+		return ip.AddDefaultRoute(net.ParseIP(gateway), link)
+	})).To(Succeed())
+}
+
+// newNetConf builds a CNI ADD config for the wireguard-cni plugin. Pass a
+// non-nil prevResult to produce a config suitable for CNI CHECK.
+func newNetConf(privKey, peerPubKey wgtypes.Key, address string, prevResult []byte) []byte {
 	conf := map[string]any{
 		"cniVersion": "1.0.0",
 		"name":       "wg-test",
 		"type":       "wireguard-cni",
 		"address":    address,
-		"privateKey": privKey,
+		"privateKey": privKey.String(),
 		"peers": []map[string]any{
 			{
-				"publicKey":  peerPubKey,
+				"publicKey":  peerPubKey.String(),
 				"allowedIPs": []string{"10.0.0.0/8"},
 			},
 		},
@@ -78,74 +83,8 @@ func newNetConf(privKey, peerPubKey, address string, prevResult []byte) []byte {
 	if prevResult != nil {
 		conf["prevResult"] = json.RawMessage(prevResult)
 	}
-
 	b, _ := json.Marshal(conf)
 	return b
-}
-
-// createVethPair creates a veth pair: hostName stays in the root namespace with
-// hostCIDR, peerName is moved into targetNS and assigned peerCIDR.
-func createVethPair(hostName, peerName, hostCIDR, peerCIDR string, targetNS ns.NetNS) error {
-	if _, _, err := ip.SetupVethWithName(hostName, peerName, 1500, "", targetNS); err != nil {
-		return fmt.Errorf("create veth %s/%s: %w", hostName, peerName, err)
-	}
-	assignAddrAndUp(hostName, hostCIDR)
-
-	return targetNS.Do(func(_ ns.NetNS) error {
-		assignAddrAndUp(peerName, peerCIDR)
-		return nil
-	})
-}
-
-// setupWireGuardServer manually configures a WireGuard server in serverNS,
-// mirroring wireguard.Setup but without CNI. The server listens on port 51820
-// and accepts the given client public key with allowedIPs 10.99.0.0/24.
-func setupWireGuardServer(serverPrivKey wgtypes.Key, clientPubKey wgtypes.Key) {
-	GinkgoHelper()
-
-	la := netlink.NewLinkAttrs()
-	la.Name = "wg0"
-	link := &netlink.GenericLink{
-		LinkAttrs: la,
-		LinkType:  "wireguard",
-	}
-	By("creating WireGuard interface wg0")
-	Expect(netlink.LinkAdd(link)).To(Succeed())
-
-	By("assigning address")
-	assignAddrAndUp("wg0", "10.99.0.1/24")
-
-	client, err := wgctrl.New()
-	Expect(err).NotTo(HaveOccurred())
-	defer client.Close()
-
-	listenPort := 51820
-	_, allowedNet, _ := net.ParseCIDR("10.99.0.0/24")
-	wgConf := wgtypes.Config{
-		PrivateKey:   &serverPrivKey,
-		ListenPort:   &listenPort,
-		ReplacePeers: true,
-		Peers: []wgtypes.PeerConfig{
-			{
-				PublicKey:         clientPubKey,
-				ReplaceAllowedIPs: true,
-				AllowedIPs:        []net.IPNet{*allowedNet},
-			},
-		},
-	}
-	Expect(client.ConfigureDevice("wg0", wgConf)).To(Succeed())
-}
-
-// addDefaultRouteInNS adds a default route inside targetNS via the given
-// gateway address, using viaIface as the outbound interface.
-func addDefaultRouteInNS(targetNS ns.NetNS, gateway, viaIface string) error {
-	return targetNS.Do(func(ns.NetNS) error {
-		link, err := netlink.LinkByName(viaIface)
-		if err != nil {
-			return fmt.Errorf("find iface %s: %w", viaIface, err)
-		}
-		return ip.AddDefaultRoute(net.ParseIP(gateway), link)
-	})
 }
 
 var _ = Describe("Integration", Ordered, Label("e2e"), func() {
@@ -159,8 +98,13 @@ var _ = Describe("Integration", Ordered, Label("e2e"), func() {
 
 	BeforeAll(func() {
 		var err error
+
 		testNS, err = testutils.NewNS()
 		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			testNS.Close()
+			testutils.UnmountNS(testNS)
+		})
 
 		privKey, err = wgtypes.GeneratePrivateKey()
 		Expect(err).NotTo(HaveOccurred())
@@ -168,18 +112,11 @@ var _ = Describe("Integration", Ordered, Label("e2e"), func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		confJSON = newNetConf(
-			privKey.String(),
-			peerKey.PublicKey().String(),
+			privKey,
+			peerKey.PublicKey(),
 			"10.100.0.2/24",
 			nil,
 		)
-	})
-
-	AfterAll(func() {
-		if testNS != nil {
-			testNS.Close()
-			testutils.UnmountNS(testNS)
-		}
 	})
 
 	It("ADD creates the WireGuard interface with the correct address", func() {
@@ -187,7 +124,6 @@ var _ = Describe("Integration", Ordered, Label("e2e"), func() {
 			ContainerID: "test-container",
 			Netns:       testNS.Path(),
 			IfName:      "wg0",
-			Args:        "",
 			Path:        "/opt/cni/bin",
 			StdinData:   confJSON,
 		}
@@ -198,125 +134,102 @@ var _ = Describe("Integration", Ordered, Label("e2e"), func() {
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = testNS.Do(func(_ ns.NetNS) error {
-			link, lerr := netlink.LinkByName("wg0")
-			if lerr != nil {
-				return lerr
+		var addrs []netlink.Addr
+		Expect(testNS.Do(func(_ ns.NetNS) error {
+			link, err := netlink.LinkByName(defaultInterface)
+			if err != nil {
+				return err
 			}
+			addrs, err = netlink.AddrList(link, netlink.FAMILY_ALL)
+			return err
+		})).To(Succeed())
+		Expect(addrs).To(ContainElement(WithTransform(
+			func(a netlink.Addr) string { return a.IP.String() },
+			Equal("10.100.0.2"),
+		)))
 
-			addrs, lerr := netlink.AddrList(link, netlink.FAMILY_ALL)
-			if lerr != nil {
-				return lerr
+		var dev *wgtypes.Device
+		Expect(testNS.Do(func(_ ns.NetNS) error {
+			wgClient, err := wgctrl.New()
+			if err != nil {
+				return err
 			}
-
-			found := false
-			for _, a := range addrs {
-				if a.IP.String() == "10.100.0.2" {
-					found = true
-					break
-				}
-			}
-			if !found {
-				return fmt.Errorf("address 10.100.0.2 not found on wg0")
-			}
-
-			client, lerr := wgctrl.New()
-			if lerr != nil {
-				return lerr
-			}
-			defer client.Close()
-
-			dev, lerr := client.Device("wg0")
-			if lerr != nil {
-				return lerr
-			}
-
-			expectedPub := privKey.PublicKey()
-			if dev.PublicKey != expectedPub {
-				return fmt.Errorf("public key mismatch")
-			}
-
-			return nil
-		})
-		Expect(err).NotTo(HaveOccurred())
+			defer wgClient.Close()
+			dev, err = wgClient.Device(defaultInterface)
+			return err
+		})).To(Succeed())
+		Expect(dev.PublicKey).To(Equal(privKey.PublicKey()))
 	})
 
 	It("CHECK succeeds after ADD", func() {
-		checkConf := newNetConf(
-			privKey.String(),
-			peerKey.PublicKey().String(),
-			"10.100.0.2/24",
-			addResult,
-		)
 		args := &skel.CmdArgs{
 			ContainerID: "test-container",
 			Netns:       testNS.Path(),
-			IfName:      "wg0",
-			Args:        "",
+			IfName:      defaultInterface,
 			Path:        "/opt/cni/bin",
-			StdinData:   checkConf,
+			StdinData: newNetConf(
+				privKey,
+				peerKey.PublicKey(),
+				"10.100.0.2/24",
+				addResult,
+			),
 		}
 
-		err := testutils.CmdCheckWithArgs(args, func() error {
+		Expect(testutils.CmdCheckWithArgs(args, func() error {
 			return funcs.Check(args)
-		})
-		Expect(err).NotTo(HaveOccurred())
+		})).To(Succeed())
 	})
 
 	It("CHECK fails without prevResult", func() {
 		args := &skel.CmdArgs{
 			ContainerID: "test-container",
 			Netns:       testNS.Path(),
-			IfName:      "wg0",
-			Args:        "",
+			IfName:      defaultInterface,
 			Path:        "/opt/cni/bin",
 			StdinData:   confJSON,
 		}
 
-		err := funcs.Check(args)
-		Expect(err).To(MatchError(ContainSubstring("requires a prevResult")))
+		Expect(testutils.CmdCheckWithArgs(args, func() error {
+			return funcs.Check(args)
+		})).To(MatchError(ContainSubstring("requires a prevResult")))
 	})
 
 	It("DEL removes the interface", func() {
 		args := &skel.CmdArgs{
 			ContainerID: "test-container",
 			Netns:       testNS.Path(),
-			IfName:      "wg0",
-			Args:        "",
+			IfName:      defaultInterface,
 			Path:        "/opt/cni/bin",
 			StdinData:   confJSON,
 		}
 
-		err := testutils.CmdDelWithArgs(args, func() error {
+		Expect(testutils.CmdDelWithArgs(args, func() error {
 			return funcs.Del(args)
-		})
-		Expect(err).NotTo(HaveOccurred())
+		})).To(Succeed())
 	})
 
 	It("DEL is idempotent (second call succeeds)", func() {
 		args := &skel.CmdArgs{
 			ContainerID: "test-container",
 			Netns:       testNS.Path(),
-			IfName:      "wg0",
-			Args:        "",
+			IfName:      defaultInterface,
 			Path:        "/opt/cni/bin",
 			StdinData:   confJSON,
 		}
 
-		err := testutils.CmdDelWithArgs(args, func() error {
+		Expect(testutils.CmdDelWithArgs(args, func() error {
 			return funcs.Del(args)
-		})
-		Expect(err).NotTo(HaveOccurred())
+		})).To(Succeed())
 	})
 })
 
 var _ = Describe("E2E", Ordered, Label("e2e"), func() {
 	var (
-		serverNS      ns.NetNS
-		clientNS      ns.NetNS
-		serverPrivKey wgtypes.Key
-		clientPrivKey wgtypes.Key
-		confJSON      []byte
+		serverNS  ns.NetNS
+		clientNS  ns.NetNS
+		serverKey wgtypes.Key
+		clientKey wgtypes.Key
+		confJSON  []byte
 	)
 
 	BeforeAll(func() {
@@ -324,68 +237,99 @@ var _ = Describe("E2E", Ordered, Label("e2e"), func() {
 
 		serverNS, err = testutils.NewNS()
 		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			serverNS.Close()
+			testutils.UnmountNS(serverNS)
+		})
+
 		clientNS, err = testutils.NewNS()
 		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			clientNS.Close()
+			testutils.UnmountNS(clientNS)
+		})
 
-		serverPrivKey, err = wgtypes.GeneratePrivateKey()
+		DeferCleanup(func() {
+			ip.DelLinkByName("veth0-srv")
+			ip.DelLinkByName("veth0-cli")
+		})
+
+		serverKey, err = wgtypes.GeneratePrivateKey()
 		Expect(err).NotTo(HaveOccurred())
-		clientPrivKey, err = wgtypes.GeneratePrivateKey()
+		clientKey, err = wgtypes.GeneratePrivateKey()
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(ip.EnableIP4Forward()).To(Succeed())
 
-		Expect(createVethPair(
-			"veth0-srv", "veth1-srv",
-			"10.200.0.1/30", "10.200.0.2/30",
-			serverNS,
-		)).To(Succeed())
+		By("creating veth links connecting root namespace to server and client namespaces")
+		createVethPair("veth0-srv", "veth1-srv", "10.200.0.1/30", "10.200.0.2/30", serverNS)
+		createVethPair("veth0-cli", "veth1-cli", "10.200.1.1/30", "10.200.1.2/30", clientNS)
 
-		Expect(createVethPair(
-			"veth0-cli", "veth1-cli",
-			"10.200.1.1/30", "10.200.1.2/30",
-			clientNS,
-		)).To(Succeed())
+		By("routing so namespaces can reach each other for the WireGuard handshake")
+		// Client must reach 10.200.0.2 (server's veth) to initiate the handshake.
+		addDefaultRouteInNS(clientNS, "10.200.1.1", "veth1-cli")
+		// Server must reach 10.200.1.x (client's veth) to reply to handshake packets.
+		addDefaultRouteInNS(serverNS, "10.200.0.1", "veth1-srv")
 
-		// Client needs a route to reach 10.200.0.2 (server veth) for the WireGuard handshake.
-		Expect(addDefaultRouteInNS(clientNS, "10.200.1.1", "veth1-cli")).To(Succeed())
-		// Server needs a route back to 10.200.1.x (client veth) to reply to WireGuard packets.
-		Expect(addDefaultRouteInNS(serverNS, "10.200.0.1", "veth1-srv")).To(Succeed())
-
+		By("configuring the WireGuard server")
 		Expect(serverNS.Do(func(ns.NetNS) error {
-			setupWireGuardServer(serverPrivKey, clientPrivKey.PublicKey())
+			By("creating WireGuard server interface " + defaultInterface)
+			la := netlink.NewLinkAttrs()
+			la.Name = defaultInterface
+			err := netlink.LinkAdd(&netlink.Wireguard{LinkAttrs: la})
+			Expect(err).NotTo(HaveOccurred())
+
+			link, err := netlink.LinkByName(defaultInterface)
+			Expect(err).NotTo(HaveOccurred())
+			addr, err := netlink.ParseAddr("10.99.0.1/24")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(netlink.AddrAdd(link, addr)).To(Succeed())
+			Expect(netlink.LinkSetUp(link)).To(Succeed())
+
+			By("configuring server keys and peer allowlist")
+			wgClient, err := wgctrl.New()
+			Expect(err).NotTo(HaveOccurred())
+			defer wgClient.Close()
+
+			_, allowedNet, _ := net.ParseCIDR("10.99.0.0/24")
+			Expect(wgClient.ConfigureDevice(defaultInterface, wgtypes.Config{
+				PrivateKey:   &serverKey,
+				ListenPort:   new(51820),
+				ReplacePeers: true,
+				Peers: []wgtypes.PeerConfig{
+					{
+						PublicKey:         clientKey.PublicKey(),
+						ReplaceAllowedIPs: true,
+						AllowedIPs:        []net.IPNet{*allowedNet},
+					},
+				},
+			})).To(Succeed())
 			return nil
 		})).To(Succeed())
 
-		confJSON = newE2ENetConf(
-			clientPrivKey.String(),
-			serverPrivKey.PublicKey().String(),
-			"10.99.0.2/24",
-			"10.200.0.2:51820",
-		)
-	})
-
-	AfterAll(func() {
-		if clientNS != nil {
-			clientNS.Close()
-			testutils.UnmountNS(clientNS)
-		}
-		if serverNS != nil {
-			serverNS.Close()
-			testutils.UnmountNS(serverNS)
-		}
-
-		// Clean up host-side veth ends (peer sides are removed with their namespaces).
-		for _, ifName := range []string{"veth0-srv", "veth0-cli"} {
-			ip.DelLinkByName(ifName)
-		}
+		confJSON, err = json.Marshal(map[string]any{
+			"cniVersion": "1.0.0",
+			"name":       "wg-e2e",
+			"type":       "wireguard-cni",
+			"address":    "10.99.0.2/24",
+			"privateKey": clientKey.String(),
+			"peers": []map[string]any{
+				{
+					"publicKey":           serverKey.PublicKey().String(),
+					"allowedIPs":          []string{"10.99.0.1/32"},
+					"endpoint":            "10.200.0.2:51820",
+					"persistentKeepalive": 5,
+				},
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("CNI ADD configures the client WireGuard interface", func() {
 		args := &skel.CmdArgs{
 			ContainerID: "e2e-client",
 			Netns:       clientNS.Path(),
-			IfName:      "wg0",
-			Args:        "",
+			IfName:      defaultInterface,
 			Path:        "/opt/cni/bin",
 			StdinData:   confJSON,
 		}
@@ -397,19 +341,20 @@ var _ = Describe("E2E", Ordered, Label("e2e"), func() {
 	})
 
 	It("client can reach server through WireGuard tunnel", func() {
-		addr := "10.99.0.1:19999"
+		const addr = "10.99.0.1:19999"
 
+		By("starting a TCP listener on the server's WireGuard address")
 		var ln net.Listener
 		Expect(serverNS.Do(func(ns.NetNS) error {
 			var err error
 			ln, err = net.Listen("tcp4", addr)
 			return err
-		})).NotTo(HaveOccurred())
+		})).To(Succeed())
 		DeferCleanup(ln.Close)
 
-		By("waiting for server to be ready")
 		accepted := make(chan error, 1)
 		go func() {
+			defer GinkgoRecover()
 			conn, err := ln.Accept()
 			if err == nil {
 				conn.Close()
@@ -417,7 +362,7 @@ var _ = Describe("E2E", Ordered, Label("e2e"), func() {
 			accepted <- err
 		}()
 
-		By("dialing server from client")
+		By("dialing from the client namespace through the WireGuard tunnel")
 		Expect(clientNS.Do(func(ns.NetNS) error {
 			conn, err := net.DialTimeout("tcp4", addr, 10*time.Second)
 			if err != nil {
@@ -425,7 +370,8 @@ var _ = Describe("E2E", Ordered, Label("e2e"), func() {
 			}
 			conn.Close()
 			return nil
-		})).NotTo(HaveOccurred())
-		Expect(<-accepted).NotTo(HaveOccurred())
+		})).To(Succeed())
+
+		Eventually(accepted, "15s").Should(Receive(BeNil()))
 	})
 })
