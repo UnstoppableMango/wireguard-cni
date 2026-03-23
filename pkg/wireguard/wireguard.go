@@ -2,64 +2,76 @@ package wireguard
 
 import (
 	"fmt"
-	"net"
-	"time"
+	"slices"
 
 	"github.com/unstoppablemango/wireguard-cni/pkg/config"
-	"github.com/unstoppablemango/wireguard-cni/pkg/network"
 	"github.com/vishvananda/netlink"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-// Setup creates and configures a WireGuard interface inside the current network namespace.
-// Must be called from within an ns.Do() closure.
-func Setup(ifName string, conf *config.Config) error {
-	la := netlink.NewLinkAttrs()
-	la.Name = ifName
-	link := &netlink.GenericLink{
-		LinkAttrs: la,
-		LinkType:  "wireguard",
-	}
-
+func newLink(name string) (netlink.Link, error) {
+	attrs := netlink.NewLinkAttrs()
+	attrs.Name = name
+	link := &netlink.Wireguard{LinkAttrs: attrs}
 	if err := netlink.LinkAdd(link); err != nil {
-		return fmt.Errorf("failed to add wireguard link %s: %v", ifName, err)
+		return nil, err
 	}
 
 	// Resolve the link after creation to get the index.
-	createdLink, err := netlink.LinkByName(ifName)
+	return netlink.LinkByName(name)
+}
+
+func Add(ifName string, conf *config.Config) error {
+	addr, wg, err := conf.Wireguard()
+	if err != nil {
+		return fmt.Errorf("invalid configuration: %w", err)
+	}
+
+	link, err := newLink(ifName)
 	if err != nil {
 		_ = netlink.LinkDel(link)
-		return fmt.Errorf("failed to find created link %s: %v", ifName, err)
+		return fmt.Errorf("failed to create link: %v", err)
+	}
+	return setup(link, ifName, addr, wg)
+}
+
+// setup creates and configures a WireGuard interface inside the current network namespace.
+// Must be called from within an ns.Do() closure.
+func setup(link netlink.Link, ifName string, addr *netlink.Addr, conf *wgtypes.Config) error {
+	if err := netlink.AddrAdd(link, addr); err != nil {
+		return fmt.Errorf("adding address: %w", err)
+	}
+	if err := configureDevice(ifName, *conf); err != nil {
+		return fmt.Errorf("configuring device: %w", err)
+	}
+	if err := netlink.LinkSetUp(link); err != nil {
+		return fmt.Errorf("setting link up: %w", err)
 	}
 
-	addr, err := network.ParseAddress(conf.Address)
-	if err != nil {
-		_ = netlink.LinkDel(createdLink)
-		return err
-	}
-
-	if err := netlink.AddrAdd(createdLink, addr); err != nil {
-		_ = netlink.LinkDel(createdLink)
-		return fmt.Errorf("failed to add address %s to %s: %v", conf.Address, ifName, err)
-	}
-
-	if err := configure(ifName, conf); err != nil {
-		_ = netlink.LinkDel(createdLink)
-		return err
-	}
-
-	if err := netlink.LinkSetUp(createdLink); err != nil {
-		_ = netlink.LinkDel(createdLink)
-		return fmt.Errorf("failed to bring up %s: %v", ifName, err)
-	}
-
-	if err := network.AddPeerRoutes(createdLink, conf.Peers); err != nil {
-		_ = netlink.LinkDel(createdLink)
-		return err
+	for _, peer := range conf.Peers {
+		for _, allowedIP := range peer.AllowedIPs {
+			if err := netlink.RouteAdd(&netlink.Route{
+				LinkIndex: link.Attrs().Index,
+				Dst:       &allowedIP,
+			}); err != nil {
+				return fmt.Errorf("adding route: %w", err)
+			}
+		}
 	}
 
 	return nil
+}
+
+// configureDevice opens a wgctrl client and applies the WireGuard configuration.
+// Must be called from within an ns.Do() closure.
+func configureDevice(ifName string, conf wgtypes.Config) error {
+	client, err := wgctrl.New()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	return client.ConfigureDevice(ifName, conf)
 }
 
 // Teardown removes the WireGuard interface. Idempotent: not-found is not an error.
@@ -74,7 +86,7 @@ func Teardown(ifName string) error {
 	}
 
 	if err := netlink.LinkDel(link); err != nil {
-		return fmt.Errorf("failed to delete link %s: %v", ifName, err)
+		return fmt.Errorf("failed to delete link %s: %w", ifName, err)
 	}
 
 	return nil
@@ -83,132 +95,51 @@ func Teardown(ifName string) error {
 // Check verifies that the WireGuard interface exists, has the configured address,
 // and that the device public key matches the configured private key.
 // Must be called from within an ns.Do() closure.
-func Check(ifName string, conf *config.Config) error {
+func Check(ifName string, addr *netlink.Addr, pubKey wgtypes.Key) error {
+	if exists, err := containsAddr(ifName, addr); err != nil {
+		return fmt.Errorf("check: %w", err)
+	} else if !exists {
+		return fmt.Errorf("address %s not found on %s", addr, ifName)
+	}
+
+	if hasKey, err := hasPublicKey(ifName, pubKey); err != nil {
+		return fmt.Errorf("check: %w", err)
+	} else if !hasKey {
+		return fmt.Errorf("public key mismatch on %s", ifName)
+	}
+
+	return nil
+}
+
+func containsAddr(ifName string, addr *netlink.Addr) (bool, error) {
 	link, err := netlink.LinkByName(ifName)
 	if err != nil {
-		return fmt.Errorf("interface %s not found: %v", ifName, err)
+		return false, fmt.Errorf("link by name: %w", err)
 	}
 
 	addrs, err := netlink.AddrList(link, netlink.FAMILY_ALL)
 	if err != nil {
-		return fmt.Errorf("failed to list addresses on %s: %v", ifName, err)
+		return false, fmt.Errorf("ip addr show: %w", err)
 	}
 
-	expectedAddr, err := network.ParseAddress(conf.Address)
-	if err != nil {
-		return err
-	}
-
-	found := false
-	for _, a := range addrs {
-		if a.IPNet.String() == expectedAddr.IPNet.String() {
-			found = true
-			break
-		}
-	}
-	if !found {
-		return fmt.Errorf("address %s not found on %s", conf.Address, ifName)
-	}
-
-	client, err := wgctrl.New()
-	if err != nil {
-		return fmt.Errorf("failed to create wgctrl client: %v", err)
-	}
-	defer client.Close()
-
-	device, err := client.Device(ifName)
-	if err != nil {
-		return fmt.Errorf("failed to get wireguard device %s: %v", ifName, err)
-	}
-
-	privateKey, err := wgtypes.ParseKey(conf.PrivateKey)
-	if err != nil {
-		return fmt.Errorf("invalid privateKey: %v", err)
-	}
-
-	expectedPubKey := privateKey.PublicKey()
-	if device.PublicKey != expectedPubKey {
-		return fmt.Errorf("wireguard public key mismatch on %s", ifName)
-	}
-
-	return nil
+	return slices.ContainsFunc(addrs, func(a netlink.Addr) bool {
+		return a.IP.Equal(addr.IP)
+	}), nil
 }
 
-// configure opens a wgctrl client and applies the WireGuard configuration.
-// Must be called from within an ns.Do() closure.
-func configure(ifName string, conf *config.Config) error {
-	client, err := wgctrl.New()
-	if err != nil {
-		return fmt.Errorf("failed to create wgctrl client: %v", err)
+func hasPublicKey(ifName string, pubKey wgtypes.Key) (bool, error) {
+	if device, err := getDevice(ifName); err != nil {
+		return false, err
+	} else {
+		return device.PublicKey == pubKey, nil
 	}
-	defer client.Close()
-
-	privateKey, err := wgtypes.ParseKey(conf.PrivateKey)
-	if err != nil {
-		return fmt.Errorf("invalid privateKey: %v", err)
-	}
-
-	peers, err := buildPeerConfigs(conf.Peers)
-	if err != nil {
-		return err
-	}
-
-	wgConf := wgtypes.Config{
-		PrivateKey:   &privateKey,
-		ReplacePeers: true,
-		Peers:        peers,
-	}
-	if conf.ListenPort != 0 {
-		wgConf.ListenPort = &conf.ListenPort
-	}
-
-	if err := client.ConfigureDevice(ifName, wgConf); err != nil {
-		return fmt.Errorf("failed to configure wireguard device %s: %v", ifName, err)
-	}
-
-	return nil
 }
 
-// buildPeerConfigs converts config.PeerConfig slice to wgtypes.PeerConfig slice.
-func buildPeerConfigs(peers []config.PeerConfig) ([]wgtypes.PeerConfig, error) {
-	result := make([]wgtypes.PeerConfig, 0, len(peers))
-
-	for i, p := range peers {
-		pubKey, err := wgtypes.ParseKey(p.PublicKey)
-		if err != nil {
-			return nil, fmt.Errorf("peer %d: invalid publicKey: %v", i, err)
-		}
-
-		allowedIPs := make([]net.IPNet, 0, len(p.AllowedIPs))
-		for _, cidr := range p.AllowedIPs {
-			_, ipnet, err := net.ParseCIDR(cidr)
-			if err != nil {
-				return nil, fmt.Errorf("peer %d: invalid allowedIP %q: %v", i, cidr, err)
-			}
-			allowedIPs = append(allowedIPs, *ipnet)
-		}
-
-		pc := wgtypes.PeerConfig{
-			PublicKey:         pubKey,
-			ReplaceAllowedIPs: true,
-			AllowedIPs:        allowedIPs,
-		}
-
-		if p.Endpoint != "" {
-			udpAddr, err := net.ResolveUDPAddr("udp", p.Endpoint)
-			if err != nil {
-				return nil, fmt.Errorf("peer %d: invalid endpoint %q: %v", i, p.Endpoint, err)
-			}
-			pc.Endpoint = udpAddr
-		}
-
-		if p.PersistentKeepalive > 0 {
-			dur := time.Duration(p.PersistentKeepalive) * time.Second
-			pc.PersistentKeepaliveInterval = &dur
-		}
-
-		result = append(result, pc)
+func getDevice(ifName string) (*wgtypes.Device, error) {
+	client, err := wgctrl.New()
+	if err != nil {
+		return nil, err
 	}
-
-	return result, nil
+	defer client.Close()
+	return client.Device(ifName)
 }

@@ -8,3 +8,4 @@ bin/
 wireguard-cni
 *cover*
 /result
+.direnv/

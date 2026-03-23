@@ -13,7 +13,6 @@ import (
 	"github.com/containernetworking/plugins/pkg/ip"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/testutils"
-	"github.com/unstoppablemango/wireguard-cni/pkg/funcs"
 	"github.com/vishvananda/netlink"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -130,7 +129,7 @@ var _ = Describe("Integration", Ordered, Label("e2e"), func() {
 
 		var err error
 		_, addResult, err = testutils.CmdAddWithArgs(args, func() error {
-			return funcs.Add(args)
+			return cmdAdd(args)
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -176,7 +175,7 @@ var _ = Describe("Integration", Ordered, Label("e2e"), func() {
 		}
 
 		Expect(testutils.CmdCheckWithArgs(args, func() error {
-			return funcs.Check(args)
+			return cmdCheck(args)
 		})).To(Succeed())
 	})
 
@@ -190,7 +189,7 @@ var _ = Describe("Integration", Ordered, Label("e2e"), func() {
 		}
 
 		Expect(testutils.CmdCheckWithArgs(args, func() error {
-			return funcs.Check(args)
+			return cmdCheck(args)
 		})).To(MatchError(ContainSubstring("requires a prevResult")))
 	})
 
@@ -204,7 +203,7 @@ var _ = Describe("Integration", Ordered, Label("e2e"), func() {
 		}
 
 		Expect(testutils.CmdDelWithArgs(args, func() error {
-			return funcs.Del(args)
+			return cmdDel(args)
 		})).To(Succeed())
 	})
 
@@ -218,7 +217,7 @@ var _ = Describe("Integration", Ordered, Label("e2e"), func() {
 		}
 
 		Expect(testutils.CmdDelWithArgs(args, func() error {
-			return funcs.Del(args)
+			return cmdDel(args)
 		})).To(Succeed())
 	})
 })
@@ -335,7 +334,7 @@ var _ = Describe("E2E", Ordered, Label("e2e"), func() {
 		}
 
 		_, _, err := testutils.CmdAddWithArgs(args, func() error {
-			return funcs.Add(args)
+			return cmdAdd(args)
 		})
 		Expect(err).NotTo(HaveOccurred())
 	})
