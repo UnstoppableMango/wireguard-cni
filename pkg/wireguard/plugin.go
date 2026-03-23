@@ -14,10 +14,10 @@ func Add(ifName string, conf *config.Config) error {
 	}
 }
 
-// Teardown removes the WireGuard interface. Idempotent: not-found is not an error.
+// Delete removes the WireGuard interface. Idempotent: not-found is not an error.
 // Must be called from within an ns.Do() closure.
-func Teardown(ifName string) error {
-	return Name(ifName).Teardown()
+func Delete(ifName string) error {
+	return Name(ifName).Delete()
 }
 
 // Check verifies that the WireGuard interface exists, has the configured address,

@@ -62,6 +62,17 @@ func (n Name) setup(link netlink.Link, addr *netlink.Addr, conf *wgtypes.Config)
 	return nil
 }
 
+// configureDevice opens a wgctrl client and applies the WireGuard configuration.
+// Must be called from within an ns.Do() closure.
+func (n Name) configureDevice(conf wgtypes.Config) error {
+	client, err := wgctrl.New()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	return client.ConfigureDevice(n.String(), conf)
+}
+
 // Check verifies that the WireGuard interface exists, has the configured address,
 // and that the device public key matches the configured private key.
 // Must be called from within an ns.Do() closure.
@@ -81,17 +92,6 @@ func (n Name) Check(addr *netlink.Addr, pubKey wgtypes.Key) error {
 	return nil
 }
 
-// configureDevice opens a wgctrl client and applies the WireGuard configuration.
-// Must be called from within an ns.Do() closure.
-func (n Name) configureDevice(conf wgtypes.Config) error {
-	client, err := wgctrl.New()
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-	return client.ConfigureDevice(n.String(), conf)
-}
-
 func (n Name) containsAddr(addr *netlink.Addr) (bool, error) {
 	link, err := n.link()
 	if err != nil {
@@ -103,9 +103,7 @@ func (n Name) containsAddr(addr *netlink.Addr) (bool, error) {
 		return false, fmt.Errorf("ip addr show: %w", err)
 	}
 
-	return slices.ContainsFunc(addrs, func(a netlink.Addr) bool {
-		return a.IP.Equal(addr.IP)
-	}), nil
+	return slices.ContainsFunc(addrs, addr.Equal), nil
 }
 
 func (n Name) hasPublicKey(pubKey wgtypes.Key) (bool, error) {
@@ -125,19 +123,19 @@ func (n Name) getDevice() (*wgtypes.Device, error) {
 	return client.Device(n.String())
 }
 
-// Teardown removes the WireGuard interface. Idempotent: not-found is not an error.
+// Delete removes the WireGuard interface. Idempotent: not-found is not an error.
 // Must be called from within an ns.Do() closure.
-func (n Name) Teardown() error {
+func (n Name) Delete() error {
 	link, err := n.link()
 	if err != nil {
 		if _, ok := err.(netlink.LinkNotFoundError); ok {
 			return nil
 		}
-		return fmt.Errorf("failed to find link %s: %v", n.String(), err)
+		return fmt.Errorf("failed to find link %s: %v", n, err)
 	}
 
 	if err := netlink.LinkDel(link); err != nil {
-		return fmt.Errorf("failed to delete link %s: %w", n.String(), err)
+		return fmt.Errorf("failed to delete link %s: %w", n, err)
 	}
 
 	return nil

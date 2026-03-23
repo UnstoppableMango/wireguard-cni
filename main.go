@@ -44,7 +44,7 @@ func cmdDel(args *skel.CmdArgs) error {
 	}
 
 	return ns.WithNetNSPath(args.Netns, func(ns.NetNS) error {
-		return wireguard.Teardown(args.IfName)
+		return wireguard.Delete(args.IfName)
 	})
 }
 
