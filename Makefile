@@ -15,7 +15,7 @@ tidy: go.sum gomod2nix.toml
 docker container ctr: bin/image.tar.gz
 
 cover: coverprofile.out
-	$(GO) tool cover -func=coverprofile.out
+	$(GO) tool cover -func=$<
 
 load: bin/stream-image.sh
 	${CURDIR}/$< | ${DOCKER} load
@@ -25,9 +25,6 @@ format fmt:
 
 check:
 	nix flake check
-
-test-image:
-	${CURDIR}/scripts/test.sh
 
 .PHONY: test test-unit
 test:
@@ -40,7 +37,7 @@ test:
 	  go test -v ./...
 
 test-unit:
-	$(GINKGO) run -r --label-filter="!integration"
+	$(GINKGO) run -r --label-filter="!e2e"
 
 go.sum: go.mod ${GO_SRC}
 	$(GO) mod tidy
@@ -58,7 +55,7 @@ bin/image.tar.gz: bin/stream-image.sh
 	${CURDIR}/$< >$@
 
 coverprofile.out: ${GO_SRC}
-	$(GINKGO) run -r --cover --label-filter="!integration"
+	$(GINKGO) run -r --cover --label-filter="!e2e"
 
 result/bin/wireguard-cni: ${GO_SRC}
 	nix build .#wireguard-cni
