@@ -19,6 +19,8 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+// TODO: Refactor to not depend on funcs
+
 func newE2ENetConf(privKey, peerPubKey, address, endpoint string) []byte {
 	conf := map[string]any{
 		"cniVersion": "1.0.0",

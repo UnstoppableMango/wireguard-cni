@@ -63,7 +63,7 @@ func Check(args *skel.CmdArgs) error {
 	}
 
 	if conf.PrevResult == nil {
-		return fmt.Errorf("cmdCheck requires a prevResult")
+		return fmt.Errorf("check requires a prevResult")
 	}
 
 	if err := config.Validate(conf); err != nil {
