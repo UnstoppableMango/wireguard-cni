@@ -17,11 +17,11 @@ func Add(mgr network.LinkManager, conf *config.Config) error {
 	}
 	link, err := mgr.Create()
 	if err != nil {
-		return fmt.Errorf("failed to add link: %v", err)
+		return fmt.Errorf("failed to add link: %w", err)
 	}
 	if err := setup(link, addr, wg); err != nil {
 		_ = mgr.Delete()
-		return fmt.Errorf("failed to setup link: %v", err)
+		return fmt.Errorf("failed to setup link: %w", err)
 	}
 	return nil
 }
