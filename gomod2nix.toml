@@ -13,6 +13,10 @@ schema = 3
     version = 'v1.8.0'
     hash = 'sha256-M3SEl7yNfZyF+TgzBxMxF8bsND1cn/Py/7msngA3AQY='
 
+  [mod.'github.com/coreos/go-iptables']
+    version = 'v0.8.0'
+    hash = 'sha256-NMVLQ891UaXdnKQnpk+2WFAzencqeHVKistm7Uj3NzA='
+
   [mod.'github.com/go-logr/logr']
     version = 'v1.4.3'
     hash = 'sha256-Nnp/dEVNMxLp3RSPDHZzGbI8BkSNuZMX0I0cjWKXXLA='
@@ -52,6 +56,14 @@ schema = 3
   [mod.'github.com/onsi/gomega']
     version = 'v1.39.1'
     hash = 'sha256-ZlbQhUVwQBzmhBWCQ9iPWoJOVr+OqqIHB4iCNDFMEds='
+
+  [mod.'github.com/pkg/errors']
+    version = 'v0.9.1'
+    hash = 'sha256-mNfQtcrQmu3sNg/7IwiieKWOgFQOVVe2yXgKBpe/wZw='
+
+  [mod.'github.com/safchain/ethtool']
+    version = 'v0.6.2'
+    hash = 'sha256-ZiscSaWi2RoZxDGyUyVZc3LL/2ZTMfZK4T7OdFrR5GQ='
 
   [mod.'github.com/vishvananda/netlink']
     version = 'v1.3.1'
@@ -100,3 +112,7 @@ schema = 3
   [mod.'golang.zx2c4.com/wireguard/wgctrl']
     version = 'v0.0.0-20241231184526-a9ab2273dd10'
     hash = 'sha256-d1HXF2hP5phUImwA9LILzKr9IUJUx1r77S1xLJGNT0o='
+
+  [mod.'sigs.k8s.io/knftables']
+    version = 'v0.0.18'
+    hash = 'sha256-5AKPb63xu9/YkEIX8WajJ0V7cvuXWi6DSnJkFcymOoI='

@@ -10,15 +10,15 @@
       inputs.nixpkgs-lib.follows = "nixpkgs";
     };
 
-    treefmt-nix = {
-      url = "github:numtide/treefmt-nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     gomod2nix = {
       url = "github:nix-community/gomod2nix";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.inputs.systems.follows = "systems";
+    };
+
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
@@ -52,7 +52,7 @@
             nativeBuildInputs = [ pkgs.ginkgo ];
 
             checkPhase = ''
-              ginkgo run -r --label-filter="!integration"
+              ginkgo run -r --label-filter="!e2e"
             '';
           };
 
@@ -96,6 +96,7 @@
             GO = "${gopkg}/bin/go";
             GOMOD2NIX = "${pkgs.gomod2nix}/bin/gomod2nix";
 
+            VERSION = version;
             GOVERSION = gopkg.version;
           };
 

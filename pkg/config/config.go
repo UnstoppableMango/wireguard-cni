@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
+	current "github.com/containernetworking/cni/pkg/types/100"
 	"github.com/containernetworking/cni/pkg/version"
 )
 
@@ -16,8 +18,15 @@ type PeerConfig struct {
 	PersistentKeepalive int      `json:"persistentKeepalive,omitempty"`
 }
 
+func (c *PeerConfig) ResolveUDPEndpoint() (*net.UDPAddr, error) {
+	if c.Endpoint == "" {
+		return nil, nil
+	}
+	return net.ResolveUDPAddr("udp", c.Endpoint)
+}
+
 type Config struct {
-	types.NetConf
+	types.PluginConf
 	Address    string       `json:"address"`
 	PrivateKey string       `json:"privateKey"`
 	ListenPort int          `json:"listenPort,omitempty"`
@@ -29,39 +38,42 @@ func Parse(stdin []byte) (*Config, error) {
 	if err := json.Unmarshal(stdin, &conf); err != nil {
 		return nil, fmt.Errorf("failed to parse network configuration: %v", err)
 	}
-
-	if err := version.ParsePrevResult(&conf.NetConf); err != nil {
+	if err := version.ParsePrevResult(&conf.PluginConf); err != nil {
 		return nil, fmt.Errorf("could not parse prevResult: %v", err)
 	}
 
 	return &conf, nil
 }
 
-func Validate(conf *Config) error {
-	if conf.Address == "" {
-		return fmt.Errorf("address is required")
-	}
-	if _, _, err := net.ParseCIDR(conf.Address); err != nil {
-		return fmt.Errorf("invalid address %q: %v", conf.Address, err)
-	}
-
-	if conf.PrivateKey == "" {
-		return fmt.Errorf("privateKey is required")
+// Result constructs the CNI result for a WireGuard interface.
+// WireGuard uses AllowedIPs for routing so no gateway is set.
+func (c *Config) Result(args *skel.CmdArgs) (*current.Result, error) {
+	ip, ipnet, err := net.ParseCIDR(c.Address)
+	if err != nil {
+		return nil, fmt.Errorf("invalid address %q: %v", c.Address, err)
 	}
 
-	for i, peer := range conf.Peers {
-		if peer.PublicKey == "" {
-			return fmt.Errorf("peer %d: publicKey is required", i)
-		}
-		if len(peer.AllowedIPs) == 0 {
-			return fmt.Errorf("peer %d: allowedIPs is required", i)
-		}
-		for _, cidr := range peer.AllowedIPs {
-			if _, _, err := net.ParseCIDR(cidr); err != nil {
-				return fmt.Errorf("peer %d: invalid allowedIP %q: %v", i, cidr, err)
-			}
-		}
-	}
+	return &current.Result{
+		CNIVersion: c.CNIVersion,
+		Interfaces: []*current.Interface{{
+			Name:    args.IfName,
+			Sandbox: args.Netns,
+		}},
+		IPs: []*current.IPConfig{{
+			Interface: new(0),
+			Address: net.IPNet{
+				IP:   ip,
+				Mask: ipnet.Mask,
+			},
+		}},
+		Routes: []*types.Route{},
+	}, nil
+}
 
-	return nil
+func (c *Config) PrintResult(args *skel.CmdArgs) error {
+	if result, err := c.Result(args); err != nil {
+		return err
+	} else {
+		return types.PrintResult(result, c.CNIVersion)
+	}
 }
