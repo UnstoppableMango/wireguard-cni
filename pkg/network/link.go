@@ -1,6 +1,10 @@
 package network
 
-import "net"
+import (
+	"net"
+
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+)
 
 // Link is a handle to a network interface. Methods correspond to the
 // operations the CNI plugin performs when configuring an interface.
@@ -13,6 +17,10 @@ type Link interface {
 	AddRoute(dst *net.IPNet) error
 	// Addresses returns all IP addresses currently assigned to this link.
 	Addresses() ([]*net.IPNet, error)
+	// ConfigureWireGuard applies keys, peers, and listen port to the WireGuard device.
+	ConfigureWireGuard(conf wgtypes.Config) error
+	// PublicKey returns the public key currently set on the WireGuard device.
+	PublicKey() (wgtypes.Key, error)
 }
 
 // LinkManager manages a single named network link. The link name is
