@@ -86,6 +86,7 @@
             packages = with pkgs; [
               docker
               ginkgo
+              gnumake
               gopkg
               gomod2nix
               nixfmt
