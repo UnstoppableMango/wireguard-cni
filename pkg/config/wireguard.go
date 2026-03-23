@@ -5,18 +5,18 @@ import (
 	"net"
 	"time"
 
-	"github.com/vishvananda/netlink"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-func (c *Config) Wireguard() (*netlink.Addr, *wgtypes.Config, error) {
+func (c *Config) Wireguard() (*net.IPNet, *wgtypes.Config, error) {
 	if c.Address == "" {
 		return nil, nil, fmt.Errorf("address is required")
 	}
-	addr, err := netlink.ParseAddr(c.Address)
+	ip, addr, err := net.ParseCIDR(c.Address)
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid address: %w", err)
 	}
+	addr.IP = ip
 
 	if c.PrivateKey == "" {
 		return nil, nil, fmt.Errorf("privateKey is required")

@@ -39,7 +39,7 @@ func Parse(stdin []byte) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse network configuration: %v", err)
 	}
 	if err := version.ParsePrevResult(&conf.PluginConf); err != nil {
-		return nil, fmt.Errorf("could not parse prevResult: %v", err)
+		return nil, fmt.Errorf("failed to parse prevResult: %v", err)
 	}
 
 	return &conf, nil

@@ -10,6 +10,7 @@ import (
 	"github.com/containernetworking/plugins/pkg/ns"
 	bv "github.com/containernetworking/plugins/pkg/utils/buildversion"
 	"github.com/unstoppablemango/wireguard-cni/pkg/config"
+	"github.com/unstoppablemango/wireguard-cni/pkg/network"
 	"github.com/unstoppablemango/wireguard-cni/pkg/wireguard"
 )
 
@@ -30,7 +31,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	if err := ns.WithNetNSPath(args.Netns, func(ns.NetNS) error {
-		return wireguard.Add(args.IfName, conf)
+		return wireguard.Add(network.New(args.IfName), conf)
 	}); err != nil {
 		return err
 	}
@@ -44,7 +45,7 @@ func cmdDel(args *skel.CmdArgs) error {
 	}
 
 	return ns.WithNetNSPath(args.Netns, func(ns.NetNS) error {
-		return wireguard.Delete(args.IfName)
+		return network.New(args.IfName).Delete()
 	})
 }
 
@@ -58,7 +59,7 @@ func cmdCheck(args *skel.CmdArgs) error {
 	}
 
 	return ns.WithNetNSPath(args.Netns, func(ns.NetNS) error {
-		return wireguard.Check(args.IfName, conf)
+		return wireguard.Check(network.New(args.IfName), conf)
 	})
 }
 
