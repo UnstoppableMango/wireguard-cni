@@ -68,8 +68,8 @@ func setup(link network.Link, addr *net.IPNet, conf *wgtypes.Config) error {
 		return fmt.Errorf("setting link up: %w", err)
 	}
 	for _, peer := range conf.Peers {
-		for _, ip := range peer.AllowedIPs {
-			if err := link.AddRoute(&ip); err != nil {
+		for i := range peer.AllowedIPs {
+			if err := link.AddRoute(&peer.AllowedIPs[i]); err != nil {
 				return fmt.Errorf("adding route: %w", err)
 			}
 		}
