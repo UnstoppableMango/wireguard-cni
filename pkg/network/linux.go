@@ -18,36 +18,52 @@ func New(name string) LinkManager {
 // netlinkManager implements LinkManager. The string value is the interface name.
 type netlinkManager string
 
+func (m netlinkManager) Name() string {
+	return string(m)
+}
+
 func (m netlinkManager) Create() (Link, error) {
+	if err := netlink.LinkAdd(m.newLink()); err != nil {
+		return nil, err
+	}
+
+	// look up the link we just created to get its index
+	if link, err := m.Get(); err != nil {
+		// best effort cleanup on failure
+		_ = m.Delete()
+		return nil, err
+	} else {
+		return link, nil
+	}
+}
+
+func (m netlinkManager) newLink() netlink.Link {
 	la := netlink.NewLinkAttrs()
-	la.Name = string(m)
-	if err := netlink.LinkAdd(&netlink.Wireguard{LinkAttrs: la}); err != nil {
-		return nil, err
-	}
-	link, err := netlink.LinkByName(string(m))
-	if err != nil {
-		return nil, err
-	}
-	return &netlinkLink{link}, nil
+	la.Name = m.Name()
+	return &netlink.Wireguard{LinkAttrs: la}
 }
 
 func (m netlinkManager) Delete() error {
-	link, err := netlink.LinkByName(string(m))
-	if err != nil {
+	if link, err := m.get(); err != nil {
 		if _, ok := err.(netlink.LinkNotFoundError); ok {
 			return nil
 		}
 		return err
+	} else {
+		return netlink.LinkDel(link)
 	}
-	return netlink.LinkDel(link)
+}
+
+func (m netlinkManager) get() (netlink.Link, error) {
+	return netlink.LinkByName(string(m))
 }
 
 func (m netlinkManager) Get() (Link, error) {
-	link, err := netlink.LinkByName(string(m))
-	if err != nil {
+	if link, err := m.get(); err != nil {
 		return nil, err
+	} else {
+		return &netlinkLink{link}, nil
 	}
-	return &netlinkLink{link}, nil
 }
 
 // netlinkLink implements Link wrapping a resolved netlink.Link.
