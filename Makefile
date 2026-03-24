@@ -85,7 +85,7 @@ kind-load: bin/stream-image.sh
 	$(CURDIR)/$< | $(KIND) load image-archive /dev/stdin --name $(CLUSTER)
 
 kind-deploy: kind-load
-	$(KUBECTL) apply -f hack/deploy/
+	$(KUBECTL) apply -k hack/
 
 kind-delete:
 	$(KIND) delete cluster --name $(CLUSTER)
