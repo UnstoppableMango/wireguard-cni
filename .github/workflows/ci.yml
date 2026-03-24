@@ -92,7 +92,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAGS: ${{ steps.meta.outputs.tags }}
-          REPO: ghcr.io/${{ github.repository_owner }}
+          IMAGE: ghcr.io/${{ github.repository }}:latest
         run: |
           nix develop -c skopeo login ghcr.io \
             --username "${{ github.repository_owner }}" \
