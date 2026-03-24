@@ -18,7 +18,7 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-const defaultInterface = "wg0"
+const IfName = "wg0"
 
 func TestWireguardCNI(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -135,7 +135,7 @@ var _ = Describe("Integration", Ordered, Label("e2e"), func() {
 
 		var addrs []netlink.Addr
 		Expect(testNS.Do(func(_ ns.NetNS) error {
-			link, err := netlink.LinkByName(defaultInterface)
+			link, err := netlink.LinkByName(IfName)
 			if err != nil {
 				return err
 			}
@@ -154,7 +154,7 @@ var _ = Describe("Integration", Ordered, Label("e2e"), func() {
 				return err
 			}
 			defer wgClient.Close()
-			dev, err = wgClient.Device(defaultInterface)
+			dev, err = wgClient.Device(IfName)
 			return err
 		})).To(Succeed())
 		Expect(dev.PublicKey).To(Equal(privKey.PublicKey()))
@@ -164,7 +164,7 @@ var _ = Describe("Integration", Ordered, Label("e2e"), func() {
 		args := &skel.CmdArgs{
 			ContainerID: "test-container",
 			Netns:       testNS.Path(),
-			IfName:      defaultInterface,
+			IfName:      IfName,
 			Path:        "/opt/cni/bin",
 			StdinData: newNetConf(
 				privKey,
@@ -183,7 +183,7 @@ var _ = Describe("Integration", Ordered, Label("e2e"), func() {
 		args := &skel.CmdArgs{
 			ContainerID: "test-container",
 			Netns:       testNS.Path(),
-			IfName:      defaultInterface,
+			IfName:      IfName,
 			Path:        "/opt/cni/bin",
 			StdinData:   confJSON,
 		}
@@ -197,7 +197,7 @@ var _ = Describe("Integration", Ordered, Label("e2e"), func() {
 		args := &skel.CmdArgs{
 			ContainerID: "test-container",
 			Netns:       testNS.Path(),
-			IfName:      defaultInterface,
+			IfName:      IfName,
 			Path:        "/opt/cni/bin",
 			StdinData:   confJSON,
 		}
@@ -211,7 +211,7 @@ var _ = Describe("Integration", Ordered, Label("e2e"), func() {
 		args := &skel.CmdArgs{
 			ContainerID: "test-container",
 			Netns:       testNS.Path(),
-			IfName:      defaultInterface,
+			IfName:      IfName,
 			Path:        "/opt/cni/bin",
 			StdinData:   confJSON,
 		}
@@ -272,13 +272,13 @@ var _ = Describe("E2E", Ordered, Label("e2e"), func() {
 
 		By("configuring the WireGuard server")
 		Expect(serverNS.Do(func(ns.NetNS) error {
-			By("creating WireGuard server interface " + defaultInterface)
+			By("creating WireGuard server interface " + IfName)
 			la := netlink.NewLinkAttrs()
-			la.Name = defaultInterface
+			la.Name = IfName
 			err := netlink.LinkAdd(&netlink.Wireguard{LinkAttrs: la})
 			Expect(err).NotTo(HaveOccurred())
 
-			link, err := netlink.LinkByName(defaultInterface)
+			link, err := netlink.LinkByName(IfName)
 			Expect(err).NotTo(HaveOccurred())
 			addr, err := netlink.ParseAddr("10.99.0.1/24")
 			Expect(err).NotTo(HaveOccurred())
@@ -291,7 +291,7 @@ var _ = Describe("E2E", Ordered, Label("e2e"), func() {
 			defer wgClient.Close()
 
 			_, allowedNet, _ := net.ParseCIDR("10.99.0.0/24")
-			Expect(wgClient.ConfigureDevice(defaultInterface, wgtypes.Config{
+			Expect(wgClient.ConfigureDevice(IfName, wgtypes.Config{
 				PrivateKey:   &serverKey,
 				ListenPort:   new(51820),
 				ReplacePeers: true,
@@ -328,7 +328,7 @@ var _ = Describe("E2E", Ordered, Label("e2e"), func() {
 		args := &skel.CmdArgs{
 			ContainerID: "e2e-client",
 			Netns:       clientNS.Path(),
-			IfName:      defaultInterface,
+			IfName:      IfName,
 			Path:        "/opt/cni/bin",
 			StdinData:   confJSON,
 		}

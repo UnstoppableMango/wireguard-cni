@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/version"
@@ -12,6 +13,8 @@ import (
 	"github.com/unstoppablemango/wireguard-cni/pkg/config"
 	"github.com/unstoppablemango/wireguard-cni/pkg/network"
 	"github.com/unstoppablemango/wireguard-cni/pkg/wireguard"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 const pluginName = "wireguard-cni"
@@ -21,7 +24,15 @@ var (
 	ErrPrevResult  = fmt.Errorf("%s requires a prevResult", pluginName)
 )
 
+func withArgs(args *skel.CmdArgs) *zap.Logger {
+	return zap.L().With(
+		zap.String("interface", args.IfName),
+		zap.String("netns", args.Netns),
+	)
+}
+
 func cmdAdd(args *skel.CmdArgs) error {
+	withArgs(args).Info("cmdAdd")
 	conf, err := config.Parse(args.StdinData)
 	if err != nil {
 		return err
@@ -40,6 +51,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 }
 
 func cmdDel(args *skel.CmdArgs) error {
+	withArgs(args).Info("cmdDel")
 	if args.Netns == "" {
 		return nil
 	}
@@ -50,6 +62,7 @@ func cmdDel(args *skel.CmdArgs) error {
 }
 
 func cmdCheck(args *skel.CmdArgs) error {
+	withArgs(args).Info("cmdCheck")
 	conf, err := config.Parse(args.StdinData)
 	if err != nil {
 		return err
@@ -64,6 +77,16 @@ func cmdCheck(args *skel.CmdArgs) error {
 }
 
 func main() {
+	enc := zap.NewProductionEncoderConfig()
+	log := zap.New(zapcore.NewCore(
+		zapcore.NewJSONEncoder(enc),
+		zapcore.Lock(os.Stderr), // stdout is reserved for CNI result
+		zap.InfoLevel,
+	))
+
+	zap.ReplaceGlobals(log)
+	defer log.Sync() //nolint:errcheck
+
 	skel.PluginMainFuncs(skel.CNIFuncs{
 		Add:   cmdAdd,
 		Del:   cmdDel,

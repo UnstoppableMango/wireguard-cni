@@ -6,8 +6,6 @@ import (
 	"net"
 
 	"github.com/vishvananda/netlink"
-	"golang.zx2c4.com/wireguard/wgctrl"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // New returns a LinkManager for the named network interface.
@@ -69,6 +67,10 @@ func (m netlinkManager) Get() (Link, error) {
 // netlinkLink implements Link wrapping a resolved netlink.Link.
 type netlinkLink struct{ link netlink.Link }
 
+func (l *netlinkLink) Name() string {
+	return l.link.Attrs().Name
+}
+
 func (l *netlinkLink) AssignAddress(addr *net.IPNet) error {
 	return netlink.AddrAdd(l.link, &netlink.Addr{IPNet: addr})
 }
@@ -94,26 +96,4 @@ func (l *netlinkLink) Addresses() ([]*net.IPNet, error) {
 		result[i] = a.IPNet
 	}
 	return result, nil
-}
-
-func (l *netlinkLink) ConfigureWireGuard(conf wgtypes.Config) error {
-	client, err := wgctrl.New()
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-	return client.ConfigureDevice(l.link.Attrs().Name, conf)
-}
-
-func (l *netlinkLink) PublicKey() (wgtypes.Key, error) {
-	client, err := wgctrl.New()
-	if err != nil {
-		return wgtypes.Key{}, err
-	}
-	defer client.Close()
-	dev, err := client.Device(l.link.Attrs().Name)
-	if err != nil {
-		return wgtypes.Key{}, err
-	}
-	return dev.PublicKey, nil
 }
