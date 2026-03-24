@@ -90,6 +90,7 @@
               gopkg
               gomod2nix
               nixfmt
+              skopeo
             ];
 
             DOCKER = "${pkgs.docker}/bin/docker";
@@ -99,6 +100,10 @@
 
             VERSION = version;
             GOVERSION = gopkg.version;
+
+            shellHook = ''
+              echo "wireguard-cni: ${version}"
+            '';
           };
 
           treefmt.programs = {
