@@ -85,22 +85,16 @@ jobs:
             type=semver,pattern={{major}}
             type=sha
 
-      - run: |
-          $(nix build .#ctr) | nix develop -c \
-            skopeo copy docker-archive:/dev/stdin oci:./image-oci
+      - run: nix develop -c make bin/stream-image.sh
 
       - name: Login to ghcr.io
         if: github.ref_name == 'main'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
         run: |
           echo "${{ github.token }}" | nix develop -c \
             skopeo login ghcr.io \
             --username "${{ github.repository_owner }}" \
             --password-stdin
 
-      - name: Push tags
-        if: github.ref_name == 'main'
-        run: |
-          for TAG in ${{ steps.meta.outputs.tags }}; do
-            nix develop -c \
-              skopeo copy oci:./image-oci "docker://${TAG}"
-          done
+          nix develop -c make push

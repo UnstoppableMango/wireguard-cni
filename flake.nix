@@ -97,6 +97,7 @@
             GINKGO = "${pkgs.ginkgo}/bin/ginkgo";
             GO = "${gopkg}/bin/go";
             GOMOD2NIX = "${pkgs.gomod2nix}/bin/gomod2nix";
+            SKOPEO = "${pkgs.skopeo}/bin/skopeo";
 
             VERSION = version;
             GOVERSION = gopkg.version;
