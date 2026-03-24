@@ -78,6 +78,7 @@ KUBECONFIG := .kube/config
 
 .PHONY: kind kind-cluster kind-load kind-deploy kind-delete
 kind: kind-cluster kind-deploy
+
 kind-cluster: hack/kind-config.yaml
 	$(KIND) create cluster --name $(CLUSTER) --config $<
 
