@@ -89,6 +89,8 @@
               gnumake
               gopkg
               gomod2nix
+              kind
+              kubectl
               nixfmt
               skopeo
             ];
@@ -97,6 +99,8 @@
             GINKGO = "${pkgs.ginkgo}/bin/ginkgo";
             GO = "${gopkg}/bin/go";
             GOMOD2NIX = "${pkgs.gomod2nix}/bin/gomod2nix";
+            KIND = "${pkgs.kind}/bin/kind";
+            KUBECTL = "${pkgs.kubectl}/bin/kubectl";
             SKOPEO = "${pkgs.skopeo}/bin/skopeo";
 
             VERSION = version;
