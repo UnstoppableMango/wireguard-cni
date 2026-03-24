@@ -7,6 +7,7 @@ import (
 
 	"github.com/unstoppablemango/wireguard-cni/pkg/config"
 	"github.com/unstoppablemango/wireguard-cni/pkg/network"
+	"go.uber.org/zap"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -15,14 +16,20 @@ func Add(mgr network.LinkManager, conf *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
+
+	zap.L().Info("creating wireguard link")
 	link, err := mgr.Create()
 	if err != nil {
 		return fmt.Errorf("failed to add link: %w", err)
 	}
+
+	zap.L().Info("configuring wireguard link")
 	if err := setup(link, addr, wg); err != nil {
 		_ = mgr.Delete()
 		return fmt.Errorf("failed to setup link: %w", err)
 	}
+
+	zap.L().Info("wireguard link ready")
 	return nil
 }
 
@@ -38,6 +45,8 @@ func Check(mgr network.LinkManager, conf *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("check: %w", err)
 	}
+
+	zap.L().Info("checking link address", zap.String("expected", addr.String()))
 	addrs, err := link.Addresses()
 	if err != nil {
 		return fmt.Errorf("check: %w", err)
@@ -47,6 +56,8 @@ func Check(mgr network.LinkManager, conf *config.Config) error {
 	}) {
 		return fmt.Errorf("address %s not found on link", addr)
 	}
+
+	zap.L().Info("checking link public key")
 	key, err := link.PublicKey()
 	if err != nil {
 		return fmt.Errorf("check: %w", err)
@@ -58,18 +69,25 @@ func Check(mgr network.LinkManager, conf *config.Config) error {
 }
 
 func setup(link network.Link, addr *net.IPNet, conf *wgtypes.Config) error {
+	zap.L().Info("assigning address", zap.String("address", addr.String()))
 	if err := link.AssignAddress(addr); err != nil {
-		return fmt.Errorf("adding address: %w", err)
+		return fmt.Errorf("assigning address: %w", err)
 	}
+
+	zap.L().Info("applying wireguard configuration")
 	if err := link.ConfigureWireGuard(*conf); err != nil {
 		return fmt.Errorf("configuring device: %w", err)
 	}
+
+	zap.L().Info("bringing link up")
 	if err := link.BringUp(); err != nil {
 		return fmt.Errorf("setting link up: %w", err)
 	}
+
 	for _, peer := range conf.Peers {
-		for i := range peer.AllowedIPs {
-			if err := link.AddRoute(&peer.AllowedIPs[i]); err != nil {
+		for _, ip := range peer.AllowedIPs {
+			zap.L().Info("adding route", zap.String("dst", ip.String()))
+			if err := link.AddRoute(new(ip)); err != nil {
 				return fmt.Errorf("adding route: %w", err)
 			}
 		}

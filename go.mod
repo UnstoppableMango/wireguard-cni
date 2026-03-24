@@ -8,6 +8,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
 	github.com/vishvananda/netlink v1.3.1
+	go.uber.org/zap v1.27.1
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10
 )
 
@@ -25,6 +26,7 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/safchain/ethtool v0.6.2 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
+	go.uber.org/multierr v1.10.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/crypto v0.47.0 // indirect
 	golang.org/x/mod v0.32.0 // indirect
