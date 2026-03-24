@@ -88,7 +88,7 @@ jobs:
       - run: nix develop -c make bin/stream-image.sh
 
       - name: Login to ghcr.io
-        if: github.ref_name == 'main'
+        if: github.event_name == 'push'
         env:
           TAGS: ${{ steps.meta.outputs.tags }}
         run: |
