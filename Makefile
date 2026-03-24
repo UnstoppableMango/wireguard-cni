@@ -6,6 +6,7 @@ SKOPEO    ?= skopeo
 
 VERSION   ?= v0.0.1-alpha
 IMAGE     ?= wireguard-cni:${VERSION}
+REPO	  ?= localhost/${IMAGE}
 GOVERSION ?= $(shell $(GO) env GOVERSION | sed 's/go//')
 GO_IMAGE  ?= golang:$(GOVERSION)
 GOPATH    ?= $(shell $(GO) env GOPATH)
@@ -43,7 +44,7 @@ test-unit:
 
 push: ./bin/stream-image.sh
 	${CURDIR}/$< | $(SKOPEO) copy \
-	docker-archive:/dev/stdin docker://${IMAGE} \
+	docker-archive:/dev/stdin docker://${REPO} \
 	${TAGS:%=--additional-tag %}
 
 go.sum: go.mod ${GO_SRC}
