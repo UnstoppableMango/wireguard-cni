@@ -87,14 +87,15 @@ jobs:
 
       - run: nix develop -c make bin/stream-image.sh
 
-      - name: Login to ghcr.io
+      - name: Push to registry
         if: github.event_name == 'push'
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAGS: ${{ steps.meta.outputs.tags }}
+          IMAGE: ghcr.io/${{ github.repository }}:latest
         run: |
-          echo "${{ github.token }}" | nix develop -c \
-            skopeo login ghcr.io \
+          nix develop -c skopeo login ghcr.io \
             --username "${{ github.repository_owner }}" \
-            --password-stdin
+            --password-stdin <<< "$GITHUB_TOKEN"
 
           nix develop -c make push
