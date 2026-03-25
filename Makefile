@@ -57,7 +57,7 @@ bin/stream-image.sh: ${GO_SRC}
 bin/image.tar: | bin/stream-image.sh
 	${CURDIR}/$| | $(SKOPEO) copy \
 		docker-archive:/dev/stdin \
-		docker-archive://${CURDIR}/$@ \
+		docker-archive:${CURDIR}/$@ \
 		${TAGS:%=--additional-tag %}
 
 bin/image-oci: bin/stream-image.sh

@@ -24,15 +24,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: docker/setup-docker-action@v5.0.0
-
-      - uses: actions/setup-go@v6.3.0
+      - uses: cachix/install-nix-action@v31.10.2
         with:
-          go-version-file: go.mod
-          cache-dependency-path: go.sum
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: DeterminateSystems/magic-nix-cache-action@v13
 
       - run: sudo modprobe wireguard
-      - run: make test
+      - run: nix develop -c make test
 
   check:
     runs-on: ubuntu-latest
@@ -97,8 +96,7 @@ jobs:
             --username "${{ github.repository_owner }}" \
             --password-stdin <<< "$GITHUB_TOKEN"
 
-          nix develop -c podman image tag "$TAGS"
-
           while IFS= read -r tag; do
+            nix develop -c podman image tag "ghcr.io/unstoppablemango/wireguard-cni" "$tag"
             nix develop -c podman push "$tag"
           done <<< "$TAGS"
