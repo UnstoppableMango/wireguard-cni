@@ -18,8 +18,7 @@ spec:
       serviceAccountName: wireguard-cni
       initContainers:
         - name: install-cni
-          image: wireguard-cni:0.0.1
-          imagePullPolicy: Never
+          image: ghcr.io/unstoppablemango/wireguard-cni:latest
           command:
             - /bin/sh
             - -c

@@ -80,13 +80,14 @@ KUBECONFIG := .kube/config
 kind: kind-cluster kind-deploy
 
 kind-cluster: hack/kind-config.yaml
-	$(KIND) create cluster --name $(CLUSTER) --config $<
+	mkdir -p $(dir $(KUBECONFIG))
+	$(KIND) create cluster --name $(CLUSTER) --config $< --kubeconfig $(KUBECONFIG)
 
 kind-load: bin/stream-image.sh
 	$(CURDIR)/$< | $(KIND) load image-archive /dev/stdin --name $(CLUSTER)
 
 kind-deploy: kind-load
-	$(KUBECTL) apply -k hack/
+	$(KUBECTL) --kubeconfig $(KUBECONFIG) apply -k hack/
 
 kind-delete:
-	$(KIND) delete cluster --name $(CLUSTER)
+	$(KIND) delete cluster --name $(CLUSTER) --kubeconfig $(KUBECONFIG)

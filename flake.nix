@@ -62,7 +62,11 @@
 
             contents = pkgs.buildEnv {
               name = "image-root";
-              paths = [ wireguard-cni ];
+              paths = with pkgs; [
+                wireguard-cni
+                bash
+                uutils-coreutils-noprefix
+              ];
               pathsToLink = [ "/bin" ];
             };
 
@@ -103,6 +107,7 @@
             KUBECTL = "${pkgs.kubectl}/bin/kubectl";
             SKOPEO = "${pkgs.skopeo}/bin/skopeo";
 
+            KIND_EXPERIMENTAL_PROVIDER = "podman";
             VERSION = version;
             GOVERSION = gopkg.version;
 
