@@ -85,17 +85,20 @@ jobs:
             type=semver,pattern={{major}}
             type=sha
 
-      - run: nix develop -c make bin/stream-image.sh
+      - run: nix develop -c make load
 
       - name: Push to registry
         if: github.event_name == 'push'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAGS: ${{ steps.meta.outputs.tags }}
-          IMAGE: ghcr.io/unstoppablemango/wireguard-cni:latest
         run: |
-          nix develop -c skopeo login ghcr.io \
+          nix develop -c podman login ghcr.io \
             --username "${{ github.repository_owner }}" \
             --password-stdin <<< "$GITHUB_TOKEN"
 
-          nix develop -c make push
+          nix develop -c podman image tag "$TAGS"
+
+          while IFS= read -r tag; do
+            nix develop -c podman push "$tag"
+          done <<< "$TAGS"

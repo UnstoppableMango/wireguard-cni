@@ -39,6 +39,7 @@
         let
           inherit (inputs'.gomod2nix.legacyPackages) buildGoApplication;
 
+          fs = lib.fileset;
           gopkg = pkgs.go_1_26;
           version = "0.0.1";
           wireguard-cni = buildGoApplication {
@@ -46,8 +47,23 @@
             inherit version;
 
             go = gopkg;
-            src = lib.cleanSource ./.;
             modules = ./gomod2nix.toml;
+
+            src = fs.toSource {
+              root = ./.;
+              fileset = fs.difference
+                (fs.gitTracked ./.)
+                (fs.unions [
+                  ./.editorconfig
+                  ./.gitignore
+                  ./.github
+                  ./.vscode
+                  ./flake.lock
+                  ./flake.nix
+                  ./Makefile
+                  (fs.fileFilter (f: f.hasExt "md") ./.)
+                ]);
+            };
 
             nativeBuildInputs = [ pkgs.ginkgo ];
 
@@ -88,7 +104,6 @@
 
           devShells.default = pkgs.mkShellNoCC {
             packages = with pkgs; [
-              docker
               ginkgo
               gnumake
               gopkg
@@ -96,10 +111,11 @@
               kind
               kubectl
               nixfmt
+              podman
+              regclient
               skopeo
             ];
 
-            DOCKER = "${pkgs.docker}/bin/docker";
             GINKGO = "${pkgs.ginkgo}/bin/ginkgo";
             GO = "${gopkg}/bin/go";
             GOMOD2NIX = "${pkgs.gomod2nix}/bin/gomod2nix";
