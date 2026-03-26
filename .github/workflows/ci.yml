@@ -95,10 +95,12 @@ jobs:
 
       - name: Tag image
         if: github.event_name == 'push'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
         run: >
           podman image tag
           wireguard-cni:latest
-          ${{ steps.meta.outputs.tags }}
+          "${TAGS//$'\n'/ }"
 
       - name: Push to registry
         if: github.event_name == 'push'
