@@ -54,8 +54,8 @@ bin/wireguard-cni: | result/bin/wireguard-cni
 bin/stream-image.sh: ${GO_SRC}
 	nix build .#ctr --out-link $@ --no-update-lock-file
 
-bin/image.tar: | bin/stream-image.sh
-	${CURDIR}/$| | $(SKOPEO) copy \
+bin/image.tar: bin/stream-image.sh
+	${CURDIR}/$< | $(SKOPEO) copy \
 		docker-archive:/dev/stdin \
 		docker-archive:${CURDIR}/$@ \
 		${TAGS:%=--additional-tag %}
