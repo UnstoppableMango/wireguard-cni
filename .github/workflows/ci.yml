@@ -35,6 +35,7 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@v13
 
       - run: sudo modprobe wireguard
+      - run: nix develop -c go env GOMODCACHE
       - run: nix develop -c make test
 
   check:
