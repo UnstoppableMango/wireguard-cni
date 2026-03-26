@@ -27,15 +27,12 @@ jobs:
 
       - uses: redhat-actions/podman-install@main
 
-      - uses: cachix/install-nix-action@v31.10.2
+      - uses: actions/setup-go@v6.0.0
         with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
 
-      - uses: DeterminateSystems/magic-nix-cache-action@v13
-
-      - run: sudo modprobe wireguard
-      - run: stat "$(nix develop -c go env GOMODCACHE)"
-      - run: make test
+      - run: sudo modprobe wireguard && make test
 
   check:
     runs-on: ubuntu-latest
