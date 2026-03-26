@@ -93,17 +93,19 @@ jobs:
 
       - run: nix develop -c make load
 
+      - name: Tag image
+        if: github.event_name == 'push'
+        run: >
+          podman image tag
+          wireguard-cni:latest
+          ${{ steps.meta.outputs.tags }}
+
       - name: Push to registry
         if: github.event_name == 'push'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAGS: ${{ steps.meta.outputs.tags }}
-        run: |
-          nix develop -c podman login ghcr.io \
-            --username "${{ github.repository_owner }}" \
-            --password-stdin <<< "$GITHUB_TOKEN"
-
-          while IFS= read -r tag; do
-            nix develop -c podman image tag "ghcr.io/unstoppablemango/wireguard-cni" "$tag"
-            nix develop -c podman push "$tag"
-          done <<< "$TAGS"
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: wireguard-cni
+          tags: ${{ steps.meta.outputs.tags }}
+          registry: ghcr.io/unstoppablemango
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}

@@ -9,7 +9,6 @@ SKOPEO    ?= skopeo
 VERSION   ?= v0.0.1-alpha
 IMAGE     ?= localhost/wireguard-cni
 GOVERSION ?= $(shell $(GO) env GOVERSION | sed 's/go//')
-GOPATH    ?= $(shell $(GO) env GOPATH)
 
 GO_SRC := $(shell find . -name '*.go')
 
@@ -34,7 +33,7 @@ test:
 	$(PODMAN) run --rm \
 	--privileged \
 	-v "${CURDIR}:/src" \
-	-v "${GOPATH}/pkg/mod:/go/pkg/mod" \
+	-v "$(shell go env GOMODCACHE):/go/pkg/mod" \
 	-w /src \
 	golang:$(GOVERSION) \
 	go test -v ./...

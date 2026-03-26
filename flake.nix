@@ -74,7 +74,7 @@
 
           ctr = pkgs.dockerTools.streamLayeredImage {
             name = "wireguard-cni";
-            tag = version;
+            tag = "latest";
 
             contents = pkgs.buildEnv {
               name = "image-root";
