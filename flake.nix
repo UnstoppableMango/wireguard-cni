@@ -126,10 +126,6 @@
             KIND_EXPERIMENTAL_PROVIDER = "podman";
             VERSION = version;
             GOVERSION = gopkg.version;
-
-            shellHook = ''
-              echo "wireguard-cni: ${version}"
-            '';
           };
 
           treefmt.programs = {
