@@ -1,4 +1,4 @@
-DOCKER    ?= docker
+PODMAN    ?= podman
 GINKGO    ?= ginkgo
 GO        ?= go
 GOMOD2NIX ?= gomod2nix
@@ -7,22 +7,20 @@ KUBECTL   ?= kubectl
 SKOPEO    ?= skopeo
 
 VERSION   ?= v0.0.1-alpha
-IMAGE     ?= wireguard-cni:${VERSION}
+IMAGE     ?= localhost/wireguard-cni
 GOVERSION ?= $(shell $(GO) env GOVERSION | sed 's/go//')
-GO_IMAGE  ?= golang:$(GOVERSION)
-GOPATH    ?= $(shell $(GO) env GOPATH)
 
 GO_SRC := $(shell find . -name '*.go')
 
 build: bin/wireguard-cni
 tidy: go.sum gomod2nix.toml
-docker container ctr: bin/image.tar.gz
+docker container ctr: bin/image.tar
 
 cover: coverprofile.out
 	$(GO) tool cover -func=$<
 
 load: bin/stream-image.sh
-	${CURDIR}/$< | ${DOCKER} load
+	${CURDIR}/$< | $(PODMAN) load
 
 format fmt:
 	nix fmt
@@ -32,21 +30,16 @@ check:
 
 .PHONY: test test-unit
 test:
-	$(DOCKER) run --rm \
+	$(PODMAN) run --rm \
 	--privileged \
-	-v "$(CURDIR):/src" \
-	-v "$(GOPATH)/pkg/mod:/go/pkg/mod" \
+	-v "${CURDIR}:/src" \
+	-v "$(shell go env GOMODCACHE):/go/pkg/mod" \
 	-w /src \
-	$(GO_IMAGE) \
+	golang:$(GOVERSION) \
 	go test -v ./...
 
 test-unit:
 	$(GINKGO) run -r --label-filter="!e2e"
-
-push: ./bin/stream-image.sh
-	${CURDIR}/$< | $(SKOPEO) copy \
-	docker-archive:/dev/stdin docker://${IMAGE} \
-	${TAGS:%=--additional-tag %}
 
 go.sum: go.mod ${GO_SRC}
 	$(GO) mod tidy
@@ -60,12 +53,15 @@ bin/wireguard-cni: | result/bin/wireguard-cni
 bin/stream-image.sh: ${GO_SRC}
 	nix build .#ctr --out-link $@ --no-update-lock-file
 
-bin/image.tar.gz: bin/stream-image.sh
-	${CURDIR}/$< >$@
+bin/image.tar: bin/stream-image.sh
+	${CURDIR}/$< | $(SKOPEO) copy \
+		docker-archive:/dev/stdin \
+		docker-archive:${CURDIR}/$@ \
+		${TAGS:%=--additional-tag %}
 
 bin/image-oci: bin/stream-image.sh
 	${CURDIR}/$< | $(SKOPEO) copy \
-	docker-archive:/dev/stdin oci:./$@
+		docker-archive:/dev/stdin oci:${CURDIR}/$@
 
 coverprofile.out: ${GO_SRC}
 	$(GINKGO) run -r --cover --label-filter="!e2e"

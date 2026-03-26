@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
+
       - uses: cachix/install-nix-action@v31.10.2
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
@@ -24,20 +25,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: docker/setup-docker-action@v5.0.0
+
+      - uses: redhat-actions/podman-install@main
 
       - uses: actions/setup-go@v6.3.0
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
-      - run: sudo modprobe wireguard
-      - run: make test
+      - run: sudo modprobe wireguard && make test
 
   check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
+
       - uses: cachix/install-nix-action@v31.10.2
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
@@ -50,6 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
+
       - uses: cachix/install-nix-action@v31.10.2
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
@@ -66,6 +69,9 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v6.0.2
+
+      # Install outside of Nix for runner deps
+      - uses: redhat-actions/podman-install@main
 
       - uses: cachix/install-nix-action@v31.10.2
         with:
@@ -85,17 +91,19 @@ jobs:
             type=semver,pattern={{major}}
             type=sha
 
-      - run: nix develop -c make bin/stream-image.sh
+      - run: nix develop -c make load
+
+      - name: Tag image
+        if: github.event_name == 'push'
+        run: >
+          podman image tag
+          wireguard-cni:latest
+          ${{ steps.meta.outputs.tags }}
 
       - name: Push to registry
         if: github.event_name == 'push'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAGS: ${{ steps.meta.outputs.tags }}
-          IMAGE: ghcr.io/unstoppablemango/wireguard-cni:latest
-        run: |
-          nix develop -c skopeo login ghcr.io \
-            --username "${{ github.repository_owner }}" \
-            --password-stdin <<< "$GITHUB_TOKEN"
-
-          nix develop -c make push
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          tags: ${{ steps.meta.outputs.tags }}
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
