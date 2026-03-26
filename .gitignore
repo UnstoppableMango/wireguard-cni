@@ -1,5 +1,7 @@
 bin/
 .make/
+.kube/
+.direnv/
 .envrc
 .DS_Store
 .vscode/*
@@ -8,4 +10,3 @@ bin/
 wireguard-cni
 *cover*
 /result
-.direnv/

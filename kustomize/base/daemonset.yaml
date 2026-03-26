@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: wireguard-cni
+  namespace: wireguard-cni
+spec:
+  selector:
+    matchLabels:
+      app: wireguard-cni
+  template:
+    metadata:
+      labels:
+        app: wireguard-cni
+    spec:
+      hostNetwork: true
+      tolerations:
+        - operator: Exists
+      serviceAccountName: wireguard-cni
+      initContainers:
+        - name: install-cni
+          image: ghcr.io/unstoppablemango/wireguard-cni:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              cp /bin/wireguard-cni /opt/cni/bin/wireguard-cni
+              chmod 755 /opt/cni/bin/wireguard-cni
+              cp /cni-config/10-wireguard.conflist /host/etc/cni/net.d/10-wireguard.conflist
+              echo "wireguard-cni installed"
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: cni-bin
+              mountPath: /opt/cni/bin
+            - name: cni-net-d
+              mountPath: /host/etc/cni/net.d
+            - name: cni-config
+              mountPath: /cni-config
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.9
+      volumes:
+        - name: cni-bin
+          hostPath:
+            path: /opt/cni/bin
+            type: DirectoryOrCreate
+        - name: cni-net-d
+          hostPath:
+            path: /etc/cni/net.d
+            type: DirectoryOrCreate
+        - name: cni-config
+          configMap:
+            name: wireguard-cni-config

@@ -2,6 +2,8 @@ DOCKER    ?= docker
 GINKGO    ?= ginkgo
 GO        ?= go
 GOMOD2NIX ?= gomod2nix
+KIND      ?= kind
+KUBECTL   ?= kubectl
 SKOPEO    ?= skopeo
 
 VERSION   ?= v0.0.1-alpha
@@ -70,3 +72,23 @@ coverprofile.out: ${GO_SRC}
 
 result/bin/wireguard-cni: ${GO_SRC}
 	nix build .#wireguard-cni --no-update-lock-file
+
+CLUSTER    ?= wireguard-cni
+KUBECONFIG := .kube/config
+
+.PHONY: kind kind-cluster kind-load kind-deploy kind-delete
+kind: kind-cluster kind-deploy
+
+kind-cluster: hack/kind-config.yaml
+	$(KIND) get clusters | grep -q "^$(CLUSTER)$$" || \
+		$(KIND) create cluster --name $(CLUSTER) --config $< --kubeconfig $(KUBECONFIG)
+
+kind-load: bin/stream-image.sh
+	$(CURDIR)/$< | $(KIND) load image-archive /dev/stdin --name $(CLUSTER)
+
+kind-deploy: kind-load
+	$(KUBECTL) --kubeconfig $(KUBECONFIG) apply -k hack/
+
+kind-delete:
+	$(KIND) get clusters | grep -q "^$(CLUSTER)$$" && \
+		$(KIND) delete cluster --name $(CLUSTER) --kubeconfig $(KUBECONFIG) || true
