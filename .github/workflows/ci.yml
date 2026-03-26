@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
+
       - uses: cachix/install-nix-action@v31.10.2
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
@@ -27,7 +28,7 @@ jobs:
 
       - uses: redhat-actions/podman-install@main
 
-      - uses: actions/setup-go@v6.0.0
+      - uses: actions/setup-go@v6.3.0
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
@@ -38,6 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
+
       - uses: cachix/install-nix-action@v31.10.2
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
@@ -50,6 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
+
       - uses: cachix/install-nix-action@v31.10.2
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
