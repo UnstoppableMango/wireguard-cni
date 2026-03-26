@@ -30,7 +30,7 @@ format fmt:
 check:
 	nix flake check
 
-.PHONY: test test-unit
+.PHONY: test test-unit test-k8s
 test:
 	@mkdir -p ${GOMODCACHE}
 	$(PODMAN) run --rm \
@@ -43,6 +43,9 @@ test:
 
 test-unit:
 	$(GINKGO) run -r --label-filter="!e2e"
+
+test-k8s:
+	KUBECONFIG=$(KUBECONFIG) $(GINKGO) run -r --label-filter="k8s-e2e" .
 
 go.sum: go.mod ${GO_SRC}
 	$(GO) mod tidy
