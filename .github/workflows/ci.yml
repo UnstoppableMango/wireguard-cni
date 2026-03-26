@@ -70,6 +70,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
 
+      # Install outside of Nix for runner deps
+      - uses: redhat-actions/podman-install@main
+
       - uses: cachix/install-nix-action@v31.10.2
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}

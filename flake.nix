@@ -51,9 +51,8 @@
 
             src = fs.toSource {
               root = ./.;
-              fileset = fs.difference
-                (fs.gitTracked ./.)
-                (fs.unions [
+              fileset = fs.difference (fs.gitTracked ./.) (
+                fs.unions [
                   ./.editorconfig
                   ./.gitignore
                   ./.github
@@ -62,7 +61,8 @@
                   ./flake.nix
                   ./Makefile
                   (fs.fileFilter (f: f.hasExt "md") ./.)
-                ]);
+                ]
+              );
             };
 
             nativeBuildInputs = [ pkgs.ginkgo ];
