@@ -9,13 +9,14 @@
     }:
     let
       wireguard-cni = pkgs.callPackage ./cni.nix {
-        inherit pkgs version;
+        inherit version;
         inherit (lib) fileset;
+        inherit (inputs'.gomod2nix.legacyPackages) buildGoApplication;
         go = pkgs.go_1_26;
       };
 
       ctr = pkgs.callPackage ./container.nix {
-        inherit pkgs version wireguard-cni;
+        inherit wireguard-cni;
       };
     in
     {
