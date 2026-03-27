@@ -24,9 +24,16 @@
 
   outputs =
     inputs@{ flake-parts, ... }:
+    let
+      version = "0.0.1";
+    in
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = import inputs.systems;
-      imports = [ inputs.treefmt-nix.flakeModule ];
+
+      imports = [
+        inputs.treefmt-nix.flakeModule
+        (import ./nix { inherit version; })
+      ];
 
       perSystem =
         {
@@ -37,69 +44,12 @@
           ...
         }:
         let
-          inherit (inputs'.gomod2nix.legacyPackages) buildGoApplication;
-
-          fs = lib.fileset;
           gopkg = pkgs.go_1_26;
-          version = "0.0.1";
-          wireguard-cni = buildGoApplication {
-            pname = "wireguard-cni";
-            inherit version;
-
-            go = gopkg;
-            modules = ./gomod2nix.toml;
-
-            src = fs.toSource {
-              root = ./.;
-              fileset = fs.difference (fs.gitTracked ./.) (
-                fs.unions [
-                  ./.editorconfig
-                  ./.gitignore
-                  ./.github
-                  ./.vscode
-                  ./flake.lock
-                  ./flake.nix
-                  ./Makefile
-                  (fs.fileFilter (f: f.hasExt "md") ./.)
-                ]
-              );
-            };
-
-            nativeBuildInputs = [ pkgs.ginkgo ];
-
-            checkPhase = ''
-              ginkgo run -r --label-filter="!e2e"
-            '';
-          };
-
-          ctr = pkgs.dockerTools.streamLayeredImage {
-            name = "wireguard-cni";
-            tag = "latest";
-
-            contents = pkgs.buildEnv {
-              name = "image-root";
-              paths = with pkgs; [
-                wireguard-cni
-                bash
-                uutils-coreutils-noprefix
-              ];
-              pathsToLink = [ "/bin" ];
-            };
-
-            config = {
-              Entrypoint = [ "/bin/wireguard-cni" ];
-            };
-          };
         in
         {
           _module.args.pkgs = import inputs.nixpkgs {
             inherit system;
             overlays = [ inputs.gomod2nix.overlays.default ];
-          };
-
-          packages = {
-            inherit wireguard-cni ctr;
-            default = wireguard-cni;
           };
 
           devShells.default = pkgs.mkShellNoCC {
