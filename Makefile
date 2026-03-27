@@ -6,9 +6,10 @@ KIND      ?= kind
 KUBECTL   ?= kubectl
 SKOPEO    ?= skopeo
 
-VERSION   ?= v0.0.1-alpha
-IMAGE     ?= localhost/wireguard-cni
-GOVERSION ?= $(shell $(GO) env GOVERSION | sed 's/go//')
+VERSION    ?= v0.0.1-alpha
+IMAGE      ?= localhost/wireguard-cni
+GOVERSION  ?= $(shell $(GO) env GOVERSION | sed 's/go//')
+GOMODCACHE ?= $(shell $(GO) env GOMODCACHE)
 
 GO_SRC := $(shell find . -name '*.go')
 
@@ -30,13 +31,14 @@ check:
 
 .PHONY: test test-unit
 test:
+	@mkdir -p ${GOMODCACHE}
 	$(PODMAN) run --rm \
-	--privileged \
-	-v "${CURDIR}:/src" \
-	-v "$(shell go env GOMODCACHE):/go/pkg/mod" \
-	-w /src \
-	golang:$(GOVERSION) \
-	go test -v ./...
+		--privileged \
+		-v "${CURDIR}:/src" \
+		-v "${GOMODCACHE}:/go/pkg/mod" \
+		-w /src \
+		golang:$(GOVERSION) \
+		go test -v ./...
 
 test-unit:
 	$(GINKGO) run -r --label-filter="!e2e"

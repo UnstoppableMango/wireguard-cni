@@ -10,8 +10,8 @@ schema = 3
     hash = 'sha256-n23SNnmmVOsUulLKFc0iqdl8U53rUfd+uHjviY3CwRs='
 
   [mod.'github.com/containernetworking/plugins']
-    version = 'v1.8.0'
-    hash = 'sha256-M3SEl7yNfZyF+TgzBxMxF8bsND1cn/Py/7msngA3AQY='
+    version = 'v1.9.1'
+    hash = 'sha256-k8EiOjo8ZteEF5Nj6BQWT/cJJ1oHbisb1l+CqRTJ3Cs='
 
   [mod.'github.com/coreos/go-iptables']
     version = 'v0.8.0'
