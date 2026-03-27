@@ -36,13 +36,7 @@
       ];
 
       perSystem =
-        {
-          inputs',
-          pkgs,
-          lib,
-          system,
-          ...
-        }:
+        { pkgs, system, ... }:
         let
           gopkg = pkgs.go_1_26;
         in
@@ -62,7 +56,6 @@
               kubectl
               nixfmt
               podman
-              regclient
               skopeo
             ];
 
