@@ -4,7 +4,6 @@
   ginkgo,
   buildGoApplication,
   version,
-  ...
 }:
 buildGoApplication {
   pname = "wireguard-cni";

@@ -4,7 +4,6 @@
   dockerTools,
   uutils-coreutils-noprefix,
   wireguard-cni,
-  ...
 }:
 dockerTools.streamLayeredImage {
   name = "wireguard-cni";
