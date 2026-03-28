@@ -8,6 +8,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/unstoppablemango/wireguard-cni/pkg/cmd"
 
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/plugins/pkg/ip"
@@ -129,7 +130,7 @@ var _ = Describe("Integration", Ordered, Label("e2e"), func() {
 
 		var err error
 		_, addResult, err = testutils.CmdAddWithArgs(args, func() error {
-			return cmdAdd(args)
+			return cmd.Add(args)
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -175,7 +176,7 @@ var _ = Describe("Integration", Ordered, Label("e2e"), func() {
 		}
 
 		Expect(testutils.CmdCheckWithArgs(args, func() error {
-			return cmdCheck(args)
+			return cmd.Check(args)
 		})).To(Succeed())
 	})
 
@@ -189,7 +190,7 @@ var _ = Describe("Integration", Ordered, Label("e2e"), func() {
 		}
 
 		Expect(testutils.CmdCheckWithArgs(args, func() error {
-			return cmdCheck(args)
+			return cmd.Check(args)
 		})).To(MatchError(ContainSubstring("requires a prevResult")))
 	})
 
@@ -203,7 +204,7 @@ var _ = Describe("Integration", Ordered, Label("e2e"), func() {
 		}
 
 		Expect(testutils.CmdDelWithArgs(args, func() error {
-			return cmdDel(args)
+			return cmd.Del(args)
 		})).To(Succeed())
 	})
 
@@ -217,7 +218,7 @@ var _ = Describe("Integration", Ordered, Label("e2e"), func() {
 		}
 
 		Expect(testutils.CmdDelWithArgs(args, func() error {
-			return cmdDel(args)
+			return cmd.Del(args)
 		})).To(Succeed())
 	})
 })
@@ -334,7 +335,7 @@ var _ = Describe("E2E", Ordered, Label("e2e"), func() {
 		}
 
 		_, _, err := testutils.CmdAddWithArgs(args, func() error {
-			return cmdAdd(args)
+			return cmd.Add(args)
 		})
 		Expect(err).NotTo(HaveOccurred())
 	})
