@@ -88,6 +88,27 @@ jobs:
 
       - run: sudo modprobe wireguard && make test
 
+  test-k8s:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: redhat-actions/podman-install@main
+
+      - uses: cachix/install-nix-action@v31.10.3
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: DeterminateSystems/magic-nix-cache-action@v13
+
+      - run: sudo modprobe wireguard
+      - run: nix develop -c make kind
+
+      - name: Run Kubernetes e2e tests
+        env:
+          KUBECONFIG: ${{ github.workspace }}/.kube/config
+        run: nix develop -c make test-k8s
+
   check:
     runs-on: ubuntu-24.04
     steps:
