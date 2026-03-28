@@ -18,6 +18,7 @@ buildGoApplication {
         ../.gitignore
         ../.github
         ../.vscode
+        ../nix
         ../flake.lock
         ../flake.nix
         ../Makefile
