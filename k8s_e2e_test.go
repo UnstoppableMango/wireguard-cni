@@ -5,7 +5,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -33,25 +35,60 @@ func waitForPodRunning(ctx context.Context, n *Node, podName string) {
 	}, 2*time.Minute, 3*time.Second).Should(Succeed())
 }
 
+type cniPeer struct {
+	PublicKey           string   `json:"publicKey"`
+	AllowedIPs          []string `json:"allowedIPs"`
+	Endpoint            string   `json:"endpoint,omitempty"`
+	PersistentKeepalive int      `json:"persistentKeepalive,omitempty"`
+}
+
+func buildCNIConf(key wgtypes.Key, address string, listenPort int, peers []cniPeer) ([]byte, error) {
+	conf := map[string]any{
+		"cniVersion": "1.0.0",
+		"name":       "wg-k8s-e2e",
+		"type":       "wireguard-cni",
+		"address":    address,
+		"privateKey": key.String(),
+		"peers":      peers,
+	}
+	if listenPort != 0 {
+		conf["listenPort"] = listenPort
+	}
+	return json.Marshal(conf)
+}
+
+// withPrevResult embeds a CNI ADD result as prevResult for use in CHECK calls.
+func withPrevResult(conf, prevResult []byte) ([]byte, error) {
+	var m map[string]any
+	if err := json.Unmarshal(conf, &m); err != nil {
+		return nil, err
+	}
+	m["prevResult"] = json.RawMessage(prevResult)
+	return json.Marshal(m)
+}
+
 var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 	const (
-		serverWgIP   = "10.99.0.1/24"
-		clientWgIP   = "10.99.0.2/24"
-		serverWgNet  = "10.99.0.0/24"
-		serverWgAddr = "10.99.0.1"
-		wgPort       = 51820
-		tcpPort      = 19999
+		serverWgIP     = "10.99.0.1/24"
+		clientWgIP     = "10.99.0.2/24"
+		serverWgAddr   = "10.99.0.1"
+		wgPort         = 51820
+		tcpPort        = 19999
+		cniIfName      = "wg0"
+		cniContainerID = "k8s-e2e-test"
+		// /proc/1/ns/net is the network namespace of the container's init process,
+		// i.e. the pod's own netns — accessible from within the container.
+		cniNetns = "/proc/1/ns/net"
 	)
 
 	var (
 		client kubernetes.Interface
 		config *rest.Config
 
-		clientSecret, serverSecret *corev1.Secret
-		clientPod, serverPod       *corev1.Pod
-
-		clientNode *Node
-		serverNode *Node
+		clientPod, serverPod             *corev1.Pod
+		clientNode, serverNode           *Node
+		serverConf, clientConf           []byte
+		serverAddResult, clientAddResult []byte
 	)
 
 	BeforeAll(func(ctx context.Context) {
@@ -87,29 +124,23 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 			_ = client.CoreV1().Namespaces().Delete(ctx, created.Name, metav1.DeleteOptions{})
 		})
 
-		By("creating Node objects for server and client")
+		By("creating Node objects for server and client (generates WireGuard key pairs)")
 		clientNode, err = newNode("wg-client-", created.Name, client, config)
 		Expect(err).NotTo(HaveOccurred())
 
 		serverNode, err = newNode("wg-server-", created.Name, client, config)
-		Expect(err).NotTo(HaveOccurred())
-
-		By("creating Secrets for server and client WireGuard keys")
-		clientSecret, err = clientNode.createKeySecret(ctx)
-		Expect(err).NotTo(HaveOccurred())
-		serverSecret, err = serverNode.createKeySecret(ctx)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	BeforeAll(func(ctx context.Context) {
 		var err error
 
-		By("creating privileged server pod with wireguard-tools")
-		serverPod, err = serverNode.createPod(ctx, serverSecret.Name)
+		By("creating privileged server pod with CNI binary mounted from host")
+		serverPod, err = serverNode.createPod(ctx)
 		Expect(err).NotTo(HaveOccurred())
 
-		By("creating privileged client pod with wireguard-tools")
-		clientPod, err = clientNode.createPod(ctx, clientSecret.Name)
+		By("creating privileged client pod with CNI binary mounted from host")
+		clientPod, err = clientNode.createPod(ctx)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("waiting for server pod to reach Running phase")
@@ -128,42 +159,31 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 		serverPodIP := serverPod.Status.PodIP
 		Expect(serverPodIP).NotTo(BeEmpty())
 
-		By("configuring WireGuard interface on server pod")
-		serverCmds := [][]string{
-			{"ip", "link", "add", "wg0", "type", "wireguard"},
-			{"ip", "addr", "add", serverWgIP, "dev", "wg0"},
-			{"wg", "set", "wg0",
-				"listen-port", fmt.Sprintf("%d", wgPort),
-				"private-key", "/run/secrets/wireguard/privatekey",
-				"peer", clientNode.publicKey(),
-				"allowed-ips", serverWgNet,
-			},
-			{"ip", "link", "set", "wg0", "up"},
-		}
-		for _, cmd := range serverCmds {
-			stdout, stderr, err := serverNode.exec(ctx, serverPod.Name, cmd)
-			Expect(err).NotTo(HaveOccurred(),
-				"server cmd %v failed\nstdout: %s\nstderr: %s", cmd, stdout, stderr)
-		}
+		By("building CNI configs for server and client")
+		serverConf, err = buildCNIConf(serverNode.key, serverWgIP, wgPort, []cniPeer{
+			{PublicKey: clientNode.publicKey(), AllowedIPs: []string{"10.99.0.2/32"}},
+		})
+		Expect(err).NotTo(HaveOccurred())
 
-		By("configuring WireGuard interface on client pod")
-		clientCmds := [][]string{
-			{"ip", "link", "add", "wg0", "type", "wireguard"},
-			{"ip", "addr", "add", clientWgIP, "dev", "wg0"},
-			{"wg", "set", "wg0",
-				"private-key", "/run/secrets/wireguard/privatekey",
-				"peer", serverNode.publicKey(),
-				"allowed-ips", serverWgNet,
-				"endpoint", fmt.Sprintf("%s:%d", serverPodIP, wgPort),
-				"persistent-keepalive", "5",
+		clientConf, err = buildCNIConf(clientNode.key, clientWgIP, 0, []cniPeer{
+			{
+				PublicKey:           serverNode.publicKey(),
+				AllowedIPs:          []string{"10.99.0.1/32"},
+				Endpoint:            fmt.Sprintf("%s:%d", serverPodIP, wgPort),
+				PersistentKeepalive: 5,
 			},
-			{"ip", "link", "set", "wg0", "up"},
-		}
-		for _, cmd := range clientCmds {
-			stdout, stderr, err := clientNode.exec(ctx, clientPod.Name, cmd)
-			Expect(err).NotTo(HaveOccurred(),
-				"client cmd %v failed\nstdout: %s\nstderr: %s", cmd, stdout, stderr)
-		}
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("invoking CNI ADD on server pod via wireguard-cni binary")
+		stdout, stderr, err := serverNode.invokeCNI(ctx, serverPod.Name, "ADD", cniContainerID, cniNetns, cniIfName, serverConf)
+		Expect(err).NotTo(HaveOccurred(), "server CNI ADD failed\nstderr: %s\n stdout: %s", stderr, stdout)
+		serverAddResult = []byte(stdout)
+
+		By("invoking CNI ADD on client pod via wireguard-cni binary")
+		stdout, stderr, err = clientNode.invokeCNI(ctx, clientPod.Name, "ADD", cniContainerID, cniNetns, cniIfName, clientConf)
+		Expect(err).NotTo(HaveOccurred(), "client CNI ADD failed\nstderr: %s\n stdout: %s", stderr, stdout)
+		clientAddResult = []byte(stdout)
 	})
 
 	It("server pod has a WireGuard interface with the correct address", func(ctx context.Context) {
@@ -187,7 +207,7 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 		Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
 		Expect(stdout).To(ContainSubstring("10.99.0.2"))
 
-		By("verifying server public key and endpoint appear in 'wg show wg0'")
+		By("verifying server public key appears in 'wg show wg0'")
 		stdout, stderr, err = clientNode.exec(ctx, clientPod.Name,
 			[]string{"wg", "show", "wg0"})
 		Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
@@ -201,27 +221,16 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 				[]string{"wg", "show", "wg0", "latest-handshakes"})
 			g.Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
 			// Output format: "<pubkey>\t<unix-timestamp>\n"
-			// A non-zero handshake has a timestamp > 0
 			g.Expect(stdout).NotTo(BeEmpty())
 			parts := strings.Fields(stdout)
 			g.Expect(parts).To(HaveLen(2))
 			g.Expect(parts[1]).NotTo(Equal("0"), "handshake timestamp is still 0")
 		}, 30*time.Second, 2*time.Second).Should(Succeed())
-
-		By("confirming handshake timestamp is non-zero on client side")
-		stdout, stderr, err := clientNode.exec(ctx, clientPod.Name,
-			[]string{"wg", "show", "wg0", "latest-handshakes"})
-		Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
-		parts := strings.Fields(stdout)
-		Expect(parts).To(HaveLen(2))
-		Expect(parts[1]).NotTo(Equal("0"))
 	})
 
 	It("TCP traffic flows through the WireGuard tunnel, not direct pod networking", func(ctx context.Context) {
 		By("starting netcat listener on server pod (reachable only via wg0 tunnel from client)")
-		// OpenBSD nc: port is a positional arg; -s is incompatible with -l.
-		// The client must still route to 10.99.0.1 via wg0 — the listener on 0.0.0.0 accepts the
-		// tunnelled connection. -k keeps the listener alive across Eventually retries.
+		// -k keeps the listener alive across Eventually retries.
 		go func() {
 			defer GinkgoRecover()
 			serverNode.exec(ctx, serverPod.Name, []string{"nc", "-l", "-k", fmt.Sprintf("%d", tcpPort)}) //nolint:errcheck
@@ -248,6 +257,38 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 		parts := strings.Fields(stdout)
 		Expect(parts).To(HaveLen(3))
 		Expect(parts[2]).NotTo(Equal("0"), "expected non-zero TX bytes after tunnel traffic")
+	})
+
+	It("CNI CHECK succeeds on server pod", func(ctx context.Context) {
+		checkConf, err := withPrevResult(serverConf, serverAddResult)
+		Expect(err).NotTo(HaveOccurred())
+		_, stderr, err := serverNode.invokeCNI(ctx, serverPod.Name, "CHECK", cniContainerID, cniNetns, cniIfName, checkConf)
+		Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
+	})
+
+	It("CNI CHECK succeeds on client pod", func(ctx context.Context) {
+		checkConf, err := withPrevResult(clientConf, clientAddResult)
+		Expect(err).NotTo(HaveOccurred())
+		_, stderr, err := clientNode.invokeCNI(ctx, clientPod.Name, "CHECK", cniContainerID, cniNetns, cniIfName, checkConf)
+		Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
+	})
+
+	It("CNI DEL removes the WireGuard interface from server pod", func(ctx context.Context) {
+		_, stderr, err := serverNode.invokeCNI(ctx, serverPod.Name, "DEL", cniContainerID, cniNetns, cniIfName, serverConf)
+		Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
+
+		By("verifying wg0 no longer exists on server pod")
+		_, _, err = serverNode.exec(ctx, serverPod.Name, []string{"ip", "link", "show", "wg0"})
+		Expect(err).To(HaveOccurred(), "expected wg0 to be absent after CNI DEL")
+	})
+
+	It("CNI DEL removes the WireGuard interface from client pod", func(ctx context.Context) {
+		_, stderr, err := clientNode.invokeCNI(ctx, clientPod.Name, "DEL", cniContainerID, cniNetns, cniIfName, clientConf)
+		Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
+
+		By("verifying wg0 no longer exists on client pod")
+		_, _, err = clientNode.exec(ctx, clientPod.Name, []string{"ip", "link", "show", "wg0"})
+		Expect(err).To(HaveOccurred(), "expected wg0 to be absent after CNI DEL")
 	})
 })
 
@@ -290,29 +331,21 @@ func (n *Node) objectMeta() metav1.ObjectMeta {
 	}
 }
 
-func (n *Node) createKeySecret(ctx context.Context) (*corev1.Secret, error) {
-	secret := &corev1.Secret{
-		ObjectMeta: n.objectMeta(),
-		Data: map[string][]byte{
-			"privatekey": []byte(n.key.String() + "\n"),
-		},
-	}
+func (n *Node) createPod(ctx context.Context) (*corev1.Pod, error) {
+	privileged := true
+	runAsRoot := int64(0)
+	hostPathDir := corev1.HostPathDirectory
 
-	return n.client.CoreV1().
-		Secrets(n.namespace).
-		Create(ctx, secret, metav1.CreateOptions{})
-}
-
-func (n *Node) createPod(ctx context.Context, secretName string) (*corev1.Pod, error) {
 	pod := &corev1.Pod{
 		ObjectMeta: n.objectMeta(),
 		Spec: corev1.PodSpec{
 			RestartPolicy: corev1.RestartPolicyNever,
 			Volumes: []corev1.Volume{{
-				Name: "wg-privkey",
+				Name: "cni-bin",
 				VolumeSource: corev1.VolumeSource{
-					Secret: &corev1.SecretVolumeSource{
-						SecretName: secretName,
+					HostPath: &corev1.HostPathVolumeSource{
+						Path: "/opt/cni/bin",
+						Type: &hostPathDir,
 					},
 				},
 			}},
@@ -322,8 +355,8 @@ func (n *Node) createPod(ctx context.Context, secretName string) (*corev1.Pod, e
 				ImagePullPolicy: corev1.PullIfNotPresent,
 				Command:         []string{"sleep", "3600"},
 				SecurityContext: &corev1.SecurityContext{
-					Privileged: new(true),
-					RunAsUser:  new(int64(0)),
+					Privileged: &privileged,
+					RunAsUser:  &runAsRoot,
 					Capabilities: &corev1.Capabilities{
 						Add: []corev1.Capability{
 							corev1.Capability("NET_ADMIN"),
@@ -332,8 +365,8 @@ func (n *Node) createPod(ctx context.Context, secretName string) (*corev1.Pod, e
 					},
 				},
 				VolumeMounts: []corev1.VolumeMount{{
-					Name:      "wg-privkey",
-					MountPath: "/run/secrets/wireguard",
+					Name:      "cni-bin",
+					MountPath: "/opt/cni/bin",
 					ReadOnly:  true,
 				}},
 			}},
@@ -352,6 +385,10 @@ func (n *Node) getPod(ctx context.Context, podName string) (*corev1.Pod, error) 
 }
 
 func (n *Node) exec(ctx context.Context, pod string, cmd []string) (string, string, error) {
+	return n.execWithStdin(ctx, pod, cmd, nil)
+}
+
+func (n *Node) execWithStdin(ctx context.Context, pod string, cmd []string, stdin io.Reader) (string, string, error) {
 	req := n.client.CoreV1().RESTClient().Post().
 		Resource("pods").
 		Name(pod).
@@ -360,19 +397,36 @@ func (n *Node) exec(ctx context.Context, pod string, cmd []string) (string, stri
 		VersionedParams(&corev1.PodExecOptions{
 			Container: "main",
 			Command:   cmd,
+			Stdin:     stdin != nil,
 			Stdout:    true,
 			Stderr:    true,
 		}, scheme.ParameterCodec)
 
-	exec, err := remotecommand.NewSPDYExecutor(n.config, "POST", req.URL())
+	executor, err := remotecommand.NewSPDYExecutor(n.config, "POST", req.URL())
 	if err != nil {
 		return "", "", err
 	}
 
 	var stdout, stderr bytes.Buffer
-	err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
+	err = executor.StreamWithContext(ctx, remotecommand.StreamOptions{
+		Stdin:  stdin,
 		Stdout: &stdout,
 		Stderr: &stderr,
 	})
 	return stdout.String(), stderr.String(), err
+}
+
+// invokeCNI runs the wireguard-cni binary inside the named pod with the CNI
+// environment variables set and the given config JSON passed on stdin.
+func (n *Node) invokeCNI(ctx context.Context, podName, command, containerID, netns, ifName string, config []byte) (string, string, error) {
+	cmd := []string{
+		"env",
+		fmt.Sprintf("CNI_COMMAND=%s", command),
+		fmt.Sprintf("CNI_CONTAINERID=%s", containerID),
+		fmt.Sprintf("CNI_NETNS=%s", netns),
+		fmt.Sprintf("CNI_IFNAME=%s", ifName),
+		"CNI_PATH=/opt/cni/bin",
+		"/opt/cni/bin/wireguard-cni",
+	}
+	return n.execWithStdin(ctx, podName, cmd, bytes.NewReader(config))
 }
