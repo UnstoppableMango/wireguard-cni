@@ -22,7 +22,7 @@ jobs:
       - run: make bin/wireguard-cni
 
       - if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wireguard-cni
           path: bin/wireguard-cni
@@ -41,7 +41,7 @@ jobs:
 
       - run: make bin/wireguard-cni
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wireguard-cni-arm
           path: bin/wireguard-cni
@@ -51,12 +51,12 @@ jobs:
     needs: [build, arm]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: wireguard-cni
           path: bin/amd64
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: wireguard-cni-arm
           path: bin/arm64
