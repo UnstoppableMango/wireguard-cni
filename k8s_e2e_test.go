@@ -13,6 +13,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -91,9 +92,10 @@ func createTestPod(ctx context.Context, clientset *kubernetes.Clientset, namespa
 			RestartPolicy: corev1.RestartPolicyNever,
 			Containers: []corev1.Container{
 				{
-					Name:    "main",
-					Image:   "ghcr.io/nicolaka/netshoot:latest",
-					Command: []string{"sleep", "3600"},
+					Name:            "main",
+					Image:           "wireguard-cni-tools:latest",
+					ImagePullPolicy: corev1.PullIfNotPresent,
+					Command:         []string{"sleep", "3600"},
 					SecurityContext: &corev1.SecurityContext{
 						Privileged: &privileged,
 						RunAsUser:  &uid,
@@ -113,13 +115,13 @@ func createTestPod(ctx context.Context, clientset *kubernetes.Clientset, namespa
 
 var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 	const (
-		serverWgIP  = "10.99.0.1/24"
-		clientWgIP  = "10.99.0.2/24"
-		serverWgNet = "10.99.0.0/24"
-		clientWgNet = "10.99.0.2/32"
+		serverWgIP   = "10.99.0.1/24"
+		clientWgIP   = "10.99.0.2/24"
+		serverWgNet  = "10.99.0.0/24"
+		clientWgNet  = "10.99.0.2/32"
 		serverWgAddr = "10.99.0.1"
-		wgPort      = 51820
-		tcpPort     = 19999
+		wgPort       = 51820
+		tcpPort      = 19999
 	)
 
 	var (
