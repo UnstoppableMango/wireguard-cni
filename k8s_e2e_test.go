@@ -38,7 +38,6 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 		serverWgIP   = "10.99.0.1/24"
 		clientWgIP   = "10.99.0.2/24"
 		serverWgNet  = "10.99.0.0/24"
-		clientWgNet  = "10.99.0.2/32"
 		serverWgAddr = "10.99.0.1"
 		wgPort       = 51820
 		tcpPort      = 19999
@@ -136,7 +135,7 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 			{"wg", "set", "wg0",
 				"listen-port", fmt.Sprintf("%d", wgPort),
 				"private-key", "/run/secrets/wireguard/privatekey",
-				"peer", clientNode.publicKey().String(),
+				"peer", clientNode.publicKey(),
 				"allowed-ips", serverWgNet,
 			},
 			{"ip", "link", "set", "wg0", "up"},
@@ -153,8 +152,8 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 			{"ip", "addr", "add", clientWgIP, "dev", "wg0"},
 			{"wg", "set", "wg0",
 				"private-key", "/run/secrets/wireguard/privatekey",
-				"peer", serverNode.publicKey().String(),
-				"allowed-ips", clientWgNet,
+				"peer", serverNode.publicKey(),
+				"allowed-ips", serverWgNet,
 				"endpoint", fmt.Sprintf("%s:%d", serverPodIP, wgPort),
 				"persistent-keepalive", "5",
 			},
@@ -178,7 +177,7 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 		stdout, stderr, err = serverNode.exec(ctx, serverPod.Name,
 			[]string{"wg", "show", "wg0"})
 		Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
-		Expect(stdout).To(ContainSubstring(clientNode.publicKey().String()))
+		Expect(stdout).To(ContainSubstring(clientNode.publicKey()))
 	})
 
 	It("client pod has a WireGuard interface with the correct address", func(ctx context.Context) {
@@ -192,7 +191,7 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 		stdout, stderr, err = clientNode.exec(ctx, clientPod.Name,
 			[]string{"wg", "show", "wg0"})
 		Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
-		Expect(stdout).To(ContainSubstring(serverNode.publicKey().String()))
+		Expect(stdout).To(ContainSubstring(serverNode.publicKey()))
 	})
 
 	It("WireGuard handshake completes between pods", func(ctx context.Context) {
@@ -219,12 +218,13 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 	})
 
 	It("TCP traffic flows through the WireGuard tunnel, not direct pod networking", func(ctx context.Context) {
-		By("starting netcat listener bound only to server's WireGuard IP 10.99.0.1")
-		// nc -l binds to the WireGuard IP — only reachable via wg0 tunnel.
+		By("starting netcat listener on server pod (reachable only via wg0 tunnel from client)")
+		// OpenBSD nc: port is a positional arg; -s is incompatible with -l.
+		// The client must still route to 10.99.0.1 via wg0 — the listener on 0.0.0.0 accepts the
+		// tunnelled connection. -k keeps the listener alive across Eventually retries.
 		go func() {
 			defer GinkgoRecover()
-			// Best-effort: start listener; we don't need the result
-			serverNode.exec(ctx, serverPod.Name, []string{"nc", "-l", "-p", fmt.Sprintf("%d", tcpPort), "-s", serverWgAddr}) //nolint:errcheck
+			serverNode.exec(ctx, serverPod.Name, []string{"nc", "-l", "-k", fmt.Sprintf("%d", tcpPort)}) //nolint:errcheck
 		}()
 
 		// Give nc a moment to bind
@@ -279,8 +279,8 @@ func newNode(
 	}, nil
 }
 
-func (n *Node) publicKey() wgtypes.Key {
-	return n.key.PublicKey()
+func (n *Node) publicKey() string {
+	return n.key.PublicKey().String()
 }
 
 func (n *Node) objectMeta() metav1.ObjectMeta {
