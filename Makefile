@@ -42,7 +42,7 @@ test:
 		go test -v ./...
 
 test-unit:
-	$(GINKGO) run -r --label-filter="!e2e"
+	$(GINKGO) run -r --label-filter="!e2e && !k8s-e2e"
 
 test-k8s:
 	KUBECONFIG=$(KUBECONFIG) $(GINKGO) run -r --label-filter="k8s-e2e" .
