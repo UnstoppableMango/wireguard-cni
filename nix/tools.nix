@@ -2,6 +2,7 @@
   bash,
   buildEnv,
   dockerTools,
+  iproute2,
   netcat,
   uutils-coreutils-noprefix,
   wireguard-tools,
@@ -14,6 +15,7 @@ dockerTools.streamLayeredImage {
     name = "image-root";
     paths = [
       bash
+      iproute2
       netcat
       uutils-coreutils-noprefix
       wireguard-tools
