@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -24,128 +23,14 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 )
 
-// execInPod runs cmd inside a pod container and returns stdout, stderr, and any error.
-func execInPod(ctx context.Context, client kubernetes.Interface, config *rest.Config,
-	namespace, pod, container string, cmd []string) (string, string, error) {
-	GinkgoHelper()
-
-	req := client.CoreV1().RESTClient().Post().
-		Resource("pods").
-		Name(pod).
-		Namespace(namespace).
-		SubResource("exec").
-		VersionedParams(&corev1.PodExecOptions{
-			Container: container,
-			Command:   cmd,
-			Stdout:    true,
-			Stderr:    true,
-		}, scheme.ParameterCodec)
-
-	exec, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
-	if err != nil {
-		return "", "", err
-	}
-
-	var stdout, stderr bytes.Buffer
-	err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
-		Stdout: &stdout,
-		Stderr: &stderr,
-	})
-	return stdout.String(), stderr.String(), err
-}
-
 // waitForPodRunning polls until the named pod reaches PodRunning phase.
-func waitForPodRunning(ctx context.Context, client kubernetes.Interface, namespace, name string) {
+func waitForPodRunning(ctx context.Context, n *Node, podName string) {
 	GinkgoHelper()
 	Eventually(func(g Gomega) {
-		pod, err := client.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
+		pod, err := n.getPod(ctx, podName)
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(pod.Status.Phase).To(Equal(corev1.PodRunning))
 	}, 2*time.Minute, 3*time.Second).Should(Succeed())
-}
-
-// getPodIP returns the PodIP for the named pod, failing if empty.
-func getPodIP(ctx context.Context, client kubernetes.Interface, namespace, name string) string {
-	GinkgoHelper()
-	pod, err := client.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
-	Expect(err).NotTo(HaveOccurred())
-	Expect(pod.Status.PodIP).NotTo(BeEmpty(), "pod %s has no PodIP", name)
-	return pod.Status.PodIP
-}
-
-// createPrivKeySecret creates a Secret holding a WireGuard private key.
-// The key is stored under the "privatekey" data key.
-// Returns the created secret's name.
-func createPrivKeySecret(ctx context.Context, client kubernetes.Interface, namespace, generateName string, key wgtypes.Key) string {
-	GinkgoHelper()
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: generateName,
-			Namespace:    namespace,
-		},
-		Data: map[string][]byte{
-			"privatekey": []byte(key.String() + "\n"),
-		},
-	}
-	created, err := client.CoreV1().Secrets(namespace).Create(ctx, secret, metav1.CreateOptions{})
-	Expect(err).NotTo(HaveOccurred())
-	return created.Name
-}
-
-// createTestPod creates a privileged pod with wireguard-tools available.
-// The named secret is mounted read-only at /run/secrets/wireguard.
-// Returns the pod's generated name.
-func createTestPod(ctx context.Context, client kubernetes.Interface, namespace, generateName, secretName string) string {
-	GinkgoHelper()
-
-	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: generateName,
-			Namespace:    namespace,
-		},
-		Spec: corev1.PodSpec{
-			RestartPolicy: corev1.RestartPolicyNever,
-			Volumes: []corev1.Volume{
-				{
-					Name: "wg-privkey",
-					VolumeSource: corev1.VolumeSource{
-						Secret: &corev1.SecretVolumeSource{
-							SecretName: secretName,
-						},
-					},
-				},
-			},
-			Containers: []corev1.Container{
-				{
-					Name:            "main",
-					Image:           "wireguard-cni-tools:latest",
-					ImagePullPolicy: corev1.PullIfNotPresent,
-					Command:         []string{"sleep", "3600"},
-					SecurityContext: &corev1.SecurityContext{
-						Privileged: new(true),
-						RunAsUser:  new(int64(0)),
-						Capabilities: &corev1.Capabilities{
-							Add: []corev1.Capability{
-								corev1.Capability("NET_ADMIN"),
-								corev1.Capability("SYS_MODULE"),
-							},
-						},
-					},
-					VolumeMounts: []corev1.VolumeMount{
-						{
-							Name:      "wg-privkey",
-							MountPath: "/run/secrets/wireguard",
-							ReadOnly:  true,
-						},
-					},
-				},
-			},
-		},
-	}
-
-	created, err := client.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{})
-	Expect(err).NotTo(HaveOccurred())
-	return created.Name
 }
 
 var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
@@ -160,25 +45,19 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 	)
 
 	var (
-		ctx              context.Context
-		client           kubernetes.Interface
-		config           *rest.Config
-		namespace        string
-		serverPod        string
-		clientPod        string
-		serverKey        wgtypes.Key
-		clientKey        wgtypes.Key
-		serverSecretName string
-		clientSecretName string
+		client kubernetes.Interface
+		config *rest.Config
+
+		clientSecret, serverSecret *corev1.Secret
+		clientPod, serverPod       *corev1.Pod
+
+		clientNode *Node
+		serverNode *Node
 	)
 
 	BeforeAll(func(ctx context.Context) {
 		By("checking for kubeconfig at $KUBECONFIG or .kube/config")
 		kubeconfig := os.Getenv("KUBECONFIG")
-		if kubeconfig == "" {
-			home, _ := os.UserHomeDir()
-			kubeconfig = filepath.Join(home, ".kube", "config")
-		}
 		if _, err := os.Stat(kubeconfig); err != nil {
 			Skip(fmt.Sprintf("kubeconfig not found at %s: %v", kubeconfig, err))
 		}
@@ -190,10 +69,7 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 		client, err = kubernetes.NewForConfig(config)
 		Expect(err).NotTo(HaveOccurred())
 
-		By("verifying cluster is reachable (5s timeout namespace list)")
-		reachCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
-		_, err = client.CoreV1().Namespaces().List(reachCtx, metav1.ListOptions{})
+		_, err = client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
 		if err != nil {
 			Skip(fmt.Sprintf("cluster not reachable: %v", err))
 		}
@@ -201,47 +77,55 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 
 	BeforeAll(func(ctx context.Context) {
 		By("generating WireGuard key pairs for server and client")
-		var err error
-		serverKey, err = wgtypes.GeneratePrivateKey()
+		serverKey, err := wgtypes.GeneratePrivateKey()
 		Expect(err).NotTo(HaveOccurred())
-		clientKey, err = wgtypes.GeneratePrivateKey()
+		clientKey, err := wgtypes.GeneratePrivateKey()
 		Expect(err).NotTo(HaveOccurred())
 
-		By("creating isolated test namespace (GenerateName: wg-k8s-e2e-)")
+		By("creating isolated test namespace (GenerateName: wg-e2e-)")
 		ns := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
-				GenerateName: "wg-k8s-e2e-",
+				GenerateName: "wg-e2e-",
 			},
 		}
 		created, err := client.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
-		namespace = created.Name
 		DeferCleanup(func() {
-			_ = client.CoreV1().Namespaces().Delete(ctx, namespace, metav1.DeleteOptions{})
+			_ = client.CoreV1().Namespaces().Delete(ctx, created.Name, metav1.DeleteOptions{})
 		})
 
+		clientNode = newNode("wg-client-", created.Name, clientKey, serverKey, client, config)
+		serverNode = newNode("wg-server-", created.Name, serverKey, clientKey, client, config)
+
 		By("creating Secrets for server and client WireGuard private keys")
-		serverSecretName = createPrivKeySecret(ctx, client, namespace, "wg-server-key-", serverKey)
-		clientSecretName = createPrivKeySecret(ctx, client, namespace, "wg-client-key-", clientKey)
+		clientSecret, err = clientNode.createPrivKeySecret(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		serverSecret, err = serverNode.createPrivKeySecret(ctx)
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	BeforeAll(func(ctx context.Context) {
+		var err error
+
 		By("creating privileged server pod with wireguard-tools")
-		serverPod = createTestPod(ctx, client, namespace, "wg-server-", serverSecretName)
+		serverPod, err = serverNode.createTestPod(ctx, serverSecret.Name)
+		Expect(err).NotTo(HaveOccurred())
 
 		By("creating privileged client pod with wireguard-tools")
-		clientPod = createTestPod(ctx, client, namespace, "wg-client-", clientSecretName)
+		clientPod, err = clientNode.createTestPod(ctx, clientSecret.Name)
+		Expect(err).NotTo(HaveOccurred())
 
 		By("waiting for server pod to reach Running phase")
-		waitForPodRunning(ctx, client, namespace, serverPod)
+		waitForPodRunning(ctx, serverNode, serverPod.Name)
 
 		By("waiting for client pod to reach Running phase")
-		waitForPodRunning(ctx, client, namespace, clientPod)
+		waitForPodRunning(ctx, clientNode, clientPod.Name)
 	})
 
 	BeforeAll(func(ctx context.Context) {
 		By("getting server pod IP for use as WireGuard endpoint")
-		serverPodIP := getPodIP(ctx, client, namespace, serverPod)
+		serverPodIP := serverPod.Status.PodIP
+		Expect(serverPodIP).NotTo(BeEmpty())
 
 		By("configuring WireGuard interface on server pod")
 		serverCmds := [][]string{
@@ -250,13 +134,13 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 			{"wg", "set", "wg0",
 				"listen-port", fmt.Sprintf("%d", wgPort),
 				"private-key", "/run/secrets/wireguard/privatekey",
-				"peer", clientKey.PublicKey().String(),
+				"peer", clientNode.publicKey().String(),
 				"allowed-ips", serverWgNet,
 			},
 			{"ip", "link", "set", "wg0", "up"},
 		}
 		for _, cmd := range serverCmds {
-			stdout, stderr, err := execInPod(ctx, client, config, namespace, serverPod, "main", cmd)
+			stdout, stderr, err := serverNode.exec(ctx, serverPod.Name, cmd)
 			Expect(err).NotTo(HaveOccurred(),
 				"server cmd %v failed\nstdout: %s\nstderr: %s", cmd, stdout, stderr)
 		}
@@ -267,7 +151,7 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 			{"ip", "addr", "add", clientWgIP, "dev", "wg0"},
 			{"wg", "set", "wg0",
 				"private-key", "/run/secrets/wireguard/privatekey",
-				"peer", serverKey.PublicKey().String(),
+				"peer", serverNode.publicKey().String(),
 				"allowed-ips", clientWgNet,
 				"endpoint", fmt.Sprintf("%s:%d", serverPodIP, wgPort),
 				"persistent-keepalive", "5",
@@ -275,44 +159,44 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 			{"ip", "link", "set", "wg0", "up"},
 		}
 		for _, cmd := range clientCmds {
-			stdout, stderr, err := execInPod(ctx, client, config, namespace, clientPod, "main", cmd)
+			stdout, stderr, err := clientNode.exec(ctx, clientPod.Name, cmd)
 			Expect(err).NotTo(HaveOccurred(),
 				"client cmd %v failed\nstdout: %s\nstderr: %s", cmd, stdout, stderr)
 		}
 	})
 
-	It("server pod has a WireGuard interface with the correct address", func() {
+	It("server pod has a WireGuard interface with the correct address", func(ctx context.Context) {
 		By("checking wg0 address via 'ip addr show wg0'")
-		stdout, stderr, err := execInPod(ctx, client, config, namespace, serverPod, "main",
+		stdout, stderr, err := serverNode.exec(ctx, serverPod.Name,
 			[]string{"ip", "addr", "show", "wg0"})
 		Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
 		Expect(stdout).To(ContainSubstring(serverWgAddr))
 
 		By("verifying client public key appears in 'wg show wg0'")
-		stdout, stderr, err = execInPod(ctx, client, config, namespace, serverPod, "main",
+		stdout, stderr, err = serverNode.exec(ctx, serverPod.Name,
 			[]string{"wg", "show", "wg0"})
 		Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
-		Expect(stdout).To(ContainSubstring(clientKey.PublicKey().String()))
+		Expect(stdout).To(ContainSubstring(clientNode.publicKey().String()))
 	})
 
-	It("client pod has a WireGuard interface with the correct address", func() {
+	It("client pod has a WireGuard interface with the correct address", func(ctx context.Context) {
 		By("checking wg0 address via 'ip addr show wg0'")
-		stdout, stderr, err := execInPod(ctx, client, config, namespace, clientPod, "main",
+		stdout, stderr, err := clientNode.exec(ctx, clientPod.Name,
 			[]string{"ip", "addr", "show", "wg0"})
 		Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
 		Expect(stdout).To(ContainSubstring("10.99.0.2"))
 
 		By("verifying server public key and endpoint appear in 'wg show wg0'")
-		stdout, stderr, err = execInPod(ctx, client, config, namespace, clientPod, "main",
+		stdout, stderr, err = clientNode.exec(ctx, clientPod.Name,
 			[]string{"wg", "show", "wg0"})
 		Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
-		Expect(stdout).To(ContainSubstring(serverKey.PublicKey().String()))
+		Expect(stdout).To(ContainSubstring(serverNode.publicKey().String()))
 	})
 
-	It("WireGuard handshake completes between pods", func() {
+	It("WireGuard handshake completes between pods", func(ctx context.Context) {
 		By("waiting for latest-handshake timestamp to become non-zero (Eventually 30s)")
 		Eventually(func(g Gomega) {
-			stdout, stderr, err := execInPod(ctx, client, config, namespace, clientPod, "main",
+			stdout, stderr, err := clientNode.exec(ctx, clientPod.Name,
 				[]string{"wg", "show", "wg0", "latest-handshakes"})
 			g.Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
 			// Output format: "<pubkey>\t<unix-timestamp>\n"
@@ -324,7 +208,7 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 		}, 30*time.Second, 2*time.Second).Should(Succeed())
 
 		By("confirming handshake timestamp is non-zero on client side")
-		stdout, stderr, err := execInPod(ctx, client, config, namespace, clientPod, "main",
+		stdout, stderr, err := clientNode.exec(ctx, clientPod.Name,
 			[]string{"wg", "show", "wg0", "latest-handshakes"})
 		Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
 		parts := strings.Fields(stdout)
@@ -332,14 +216,13 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 		Expect(parts[1]).NotTo(Equal("0"))
 	})
 
-	It("TCP traffic flows through the WireGuard tunnel, not direct pod networking", func() {
+	It("TCP traffic flows through the WireGuard tunnel, not direct pod networking", func(ctx context.Context) {
 		By("starting netcat listener bound only to server's WireGuard IP 10.99.0.1")
 		// nc -l binds to the WireGuard IP — only reachable via wg0 tunnel.
 		go func() {
 			defer GinkgoRecover()
 			// Best-effort: start listener; we don't need the result
-			execInPod(ctx, client, config, namespace, serverPod, "main", //nolint:errcheck
-				[]string{"nc", "-l", "-p", fmt.Sprintf("%d", tcpPort), "-s", serverWgAddr})
+			serverNode.exec(ctx, serverPod.Name, []string{"nc", "-l", "-p", fmt.Sprintf("%d", tcpPort), "-s", serverWgAddr}) //nolint:errcheck
 		}()
 
 		// Give nc a moment to bind
@@ -347,7 +230,7 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 
 		By("dialing server's WireGuard address from client pod (Eventually 15s)")
 		Eventually(func(g Gomega) {
-			stdout, stderr, err := execInPod(ctx, client, config, namespace, clientPod, "main",
+			stdout, stderr, err := clientNode.exec(ctx, clientPod.Name,
 				[]string{"sh", "-c",
 					fmt.Sprintf("echo ok | nc -w 3 %s %d", serverWgAddr, tcpPort),
 				})
@@ -356,7 +239,7 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 		}, 15*time.Second, 2*time.Second).Should(Succeed())
 
 		By("confirming WireGuard transfer counters show non-zero TX bytes on client")
-		stdout, stderr, err := execInPod(ctx, client, config, namespace, clientPod, "main",
+		stdout, stderr, err := clientNode.exec(ctx, clientPod.Name,
 			[]string{"wg", "show", "wg0", "transfer"})
 		Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
 		// Output: "<pubkey>\t<rx-bytes>\t<tx-bytes>"
@@ -365,3 +248,129 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 		Expect(parts[2]).NotTo(Equal("0"), "expected non-zero TX bytes after tunnel traffic")
 	})
 })
+
+type Node struct {
+	namespace string
+	prefix    string
+	theirKey  wgtypes.Key
+	myKey     wgtypes.Key
+
+	client kubernetes.Interface
+	config *rest.Config
+}
+
+func newNode(
+	prefix, namespace string,
+	myKey, theirKey wgtypes.Key,
+	client kubernetes.Interface,
+	config *rest.Config,
+) *Node {
+	return &Node{
+		namespace: namespace,
+		prefix:    prefix,
+		theirKey:  theirKey,
+		myKey:     myKey,
+		client:    client,
+		config:    config,
+	}
+}
+
+func (n *Node) publicKey() wgtypes.Key {
+	return n.myKey.PublicKey()
+}
+
+func (n *Node) objectMeta() metav1.ObjectMeta {
+	return metav1.ObjectMeta{
+		GenerateName: n.prefix,
+		Namespace:    n.namespace,
+	}
+}
+
+func (n *Node) createPrivKeySecret(ctx context.Context) (*corev1.Secret, error) {
+	secret := &corev1.Secret{
+		ObjectMeta: n.objectMeta(),
+		Data: map[string][]byte{
+			"privatekey": []byte(n.myKey.String() + "\n"),
+		},
+	}
+
+	return n.client.CoreV1().
+		Secrets(n.namespace).
+		Create(ctx, secret, metav1.CreateOptions{})
+}
+
+func (n *Node) createTestPod(ctx context.Context, secretName string) (*corev1.Pod, error) {
+	pod := &corev1.Pod{
+		ObjectMeta: n.objectMeta(),
+		Spec: corev1.PodSpec{
+			RestartPolicy: corev1.RestartPolicyNever,
+			Volumes: []corev1.Volume{{
+				Name: "wg-privkey",
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName: secretName,
+					},
+				},
+			}},
+			Containers: []corev1.Container{{
+				Name:            "main",
+				Image:           "wireguard-cni-tools:latest",
+				ImagePullPolicy: corev1.PullIfNotPresent,
+				Command:         []string{"sleep", "3600"},
+				SecurityContext: &corev1.SecurityContext{
+					Privileged: new(true),
+					RunAsUser:  new(int64(0)),
+					Capabilities: &corev1.Capabilities{
+						Add: []corev1.Capability{
+							corev1.Capability("NET_ADMIN"),
+							corev1.Capability("SYS_MODULE"),
+						},
+					},
+				},
+				VolumeMounts: []corev1.VolumeMount{
+					{
+						Name:      "wg-privkey",
+						MountPath: "/run/secrets/wireguard",
+						ReadOnly:  true,
+					},
+				},
+			}},
+		},
+	}
+
+	return n.client.CoreV1().
+		Pods(n.namespace).
+		Create(ctx, pod, metav1.CreateOptions{})
+}
+
+func (n *Node) getPod(ctx context.Context, podName string) (*corev1.Pod, error) {
+	return n.client.CoreV1().
+		Pods(n.namespace).
+		Get(ctx, podName, metav1.GetOptions{})
+}
+
+func (n *Node) exec(ctx context.Context, pod string, cmd []string) (string, string, error) {
+	req := n.client.CoreV1().RESTClient().Post().
+		Resource("pods").
+		Name(pod).
+		Namespace(n.namespace).
+		SubResource("exec").
+		VersionedParams(&corev1.PodExecOptions{
+			Container: "main",
+			Command:   cmd,
+			Stdout:    true,
+			Stderr:    true,
+		}, scheme.ParameterCodec)
+
+	exec, err := remotecommand.NewSPDYExecutor(n.config, "POST", req.URL())
+	if err != nil {
+		return "", "", err
+	}
+
+	var stdout, stderr bytes.Buffer
+	err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
+		Stdout: &stdout,
+		Stderr: &stderr,
+	})
+	return stdout.String(), stderr.String(), err
+}
