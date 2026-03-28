@@ -11,6 +11,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/unstoppablemango/wireguard-cni/test/utils"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -20,10 +21,10 @@ import (
 )
 
 // waitForPodRunning polls until the named pod reaches PodRunning phase.
-func waitForPodRunning(ctx context.Context, n *Node, podName string) {
+func waitForPodRunning(ctx context.Context, n *utils.Pod, podName string) {
 	GinkgoHelper()
 	Eventually(func(g Gomega) {
-		pod, err := n.getPod(ctx, podName)
+		pod, err := n.Get(ctx, podName)
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(pod.Status.Phase).To(Equal(corev1.PodRunning))
 	}, 2*time.Minute, 3*time.Second).Should(Succeed())
