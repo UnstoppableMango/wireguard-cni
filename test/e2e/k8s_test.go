@@ -82,7 +82,7 @@ var _ = Describe("Kubernetes", Ordered, Label("k8s"), func() {
 		}
 		created, err := client.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(func() {
+		DeferCleanup(func(ctx context.Context) {
 			_ = client.CoreV1().Namespaces().Delete(ctx, created.Name, metav1.DeleteOptions{})
 		})
 

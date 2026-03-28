@@ -84,16 +84,16 @@ KUBECONFIG := ${CURDIR}/.kube/config
 kind: kind-cluster kind-deploy
 
 kind-cluster: hack/kind-config.yaml
-	$(KIND) get clusters | grep -q "^$(CLUSTER)$$" || \
-		$(KIND) create cluster --name $(CLUSTER) --config $< --kubeconfig $(KUBECONFIG)
+	$(KIND) get clusters | grep -q "^${CLUSTER}$$" || \
+		$(KIND) create cluster --name ${CLUSTER} --config $< --kubeconfig ${KUBECONFIG}
 
 kind-load: bin/stream-image.sh bin/stream-tools.sh
-	$(CURDIR)/bin/stream-image.sh | $(KIND) load image-archive /dev/stdin --name $(CLUSTER)
-	$(CURDIR)/bin/stream-tools.sh | $(KIND) load image-archive /dev/stdin --name $(CLUSTER)
+	$(CURDIR)/bin/stream-image.sh | $(KIND) load image-archive /dev/stdin --name ${CLUSTER}
+	$(CURDIR)/bin/stream-tools.sh | $(KIND) load image-archive /dev/stdin --name ${CLUSTER}
 
 kind-deploy: kind-load
-	$(KUBECTL) --kubeconfig $(KUBECONFIG) apply -k hack/
+	$(KUBECTL) --kubeconfig ${KUBECONFIG} apply -k hack/
 
 kind-delete:
-	$(KIND) get clusters | grep -q "^$(CLUSTER)$$" && \
-		$(KIND) delete cluster --name $(CLUSTER) --kubeconfig $(KUBECONFIG) || true
+	$(KIND) get clusters | grep -q "^${CLUSTER}$$" && \
+		$(KIND) delete cluster --name ${CLUSTER} --kubeconfig ${KUBECONFIG} || true
