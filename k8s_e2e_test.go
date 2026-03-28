@@ -76,12 +76,6 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 	})
 
 	BeforeAll(func(ctx context.Context) {
-		By("generating WireGuard key pairs for server and client")
-		serverKey, err := wgtypes.GeneratePrivateKey()
-		Expect(err).NotTo(HaveOccurred())
-		clientKey, err := wgtypes.GeneratePrivateKey()
-		Expect(err).NotTo(HaveOccurred())
-
 		By("creating isolated test namespace (GenerateName: wg-e2e-)")
 		ns := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
@@ -94,13 +88,17 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 			_ = client.CoreV1().Namespaces().Delete(ctx, created.Name, metav1.DeleteOptions{})
 		})
 
-		clientNode = newNode("wg-client-", created.Name, clientKey, serverKey, client, config)
-		serverNode = newNode("wg-server-", created.Name, serverKey, clientKey, client, config)
-
-		By("creating Secrets for server and client WireGuard private keys")
-		clientSecret, err = clientNode.createPrivKeySecret(ctx)
+		By("creating Node objects for server and client")
+		clientNode, err = newNode("wg-client-", created.Name, client, config)
 		Expect(err).NotTo(HaveOccurred())
-		serverSecret, err = serverNode.createPrivKeySecret(ctx)
+
+		serverNode, err = newNode("wg-server-", created.Name, client, config)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("creating Secrets for server and client WireGuard keys")
+		clientSecret, err = clientNode.createKeySecret(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		serverSecret, err = serverNode.createKeySecret(ctx)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -108,11 +106,11 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 		var err error
 
 		By("creating privileged server pod with wireguard-tools")
-		serverPod, err = serverNode.createTestPod(ctx, serverSecret.Name)
+		serverPod, err = serverNode.createPod(ctx, serverSecret.Name)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("creating privileged client pod with wireguard-tools")
-		clientPod, err = clientNode.createTestPod(ctx, clientSecret.Name)
+		clientPod, err = clientNode.createPod(ctx, clientSecret.Name)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("waiting for server pod to reach Running phase")
@@ -123,7 +121,11 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 	})
 
 	BeforeAll(func(ctx context.Context) {
+		var err error
+
 		By("getting server pod IP for use as WireGuard endpoint")
+		serverPod, err = serverNode.getPod(ctx, serverPod.Name)
+		Expect(err).NotTo(HaveOccurred())
 		serverPodIP := serverPod.Status.PodIP
 		Expect(serverPodIP).NotTo(BeEmpty())
 
@@ -252,8 +254,7 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 type Node struct {
 	namespace string
 	prefix    string
-	theirKey  wgtypes.Key
-	myKey     wgtypes.Key
+	key       wgtypes.Key
 
 	client kubernetes.Interface
 	config *rest.Config
@@ -261,22 +262,25 @@ type Node struct {
 
 func newNode(
 	prefix, namespace string,
-	myKey, theirKey wgtypes.Key,
 	client kubernetes.Interface,
 	config *rest.Config,
-) *Node {
+) (*Node, error) {
+	key, err := wgtypes.GeneratePrivateKey()
+	if err != nil {
+		return nil, err
+	}
+
 	return &Node{
 		namespace: namespace,
 		prefix:    prefix,
-		theirKey:  theirKey,
-		myKey:     myKey,
+		key:       key,
 		client:    client,
 		config:    config,
-	}
+	}, nil
 }
 
 func (n *Node) publicKey() wgtypes.Key {
-	return n.myKey.PublicKey()
+	return n.key.PublicKey()
 }
 
 func (n *Node) objectMeta() metav1.ObjectMeta {
@@ -286,11 +290,11 @@ func (n *Node) objectMeta() metav1.ObjectMeta {
 	}
 }
 
-func (n *Node) createPrivKeySecret(ctx context.Context) (*corev1.Secret, error) {
+func (n *Node) createKeySecret(ctx context.Context) (*corev1.Secret, error) {
 	secret := &corev1.Secret{
 		ObjectMeta: n.objectMeta(),
 		Data: map[string][]byte{
-			"privatekey": []byte(n.myKey.String() + "\n"),
+			"privatekey": []byte(n.key.String() + "\n"),
 		},
 	}
 
@@ -299,7 +303,7 @@ func (n *Node) createPrivKeySecret(ctx context.Context) (*corev1.Secret, error) 
 		Create(ctx, secret, metav1.CreateOptions{})
 }
 
-func (n *Node) createTestPod(ctx context.Context, secretName string) (*corev1.Pod, error) {
+func (n *Node) createPod(ctx context.Context, secretName string) (*corev1.Pod, error) {
 	pod := &corev1.Pod{
 		ObjectMeta: n.objectMeta(),
 		Spec: corev1.PodSpec{
@@ -327,13 +331,11 @@ func (n *Node) createTestPod(ctx context.Context, secretName string) (*corev1.Po
 						},
 					},
 				},
-				VolumeMounts: []corev1.VolumeMount{
-					{
-						Name:      "wg-privkey",
-						MountPath: "/run/secrets/wireguard",
-						ReadOnly:  true,
-					},
-				},
+				VolumeMounts: []corev1.VolumeMount{{
+					Name:      "wg-privkey",
+					MountPath: "/run/secrets/wireguard",
+					ReadOnly:  true,
+				}},
 			}},
 		},
 	}
