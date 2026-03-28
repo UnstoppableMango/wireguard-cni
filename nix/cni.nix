@@ -26,7 +26,7 @@ buildGoApplication {
     );
   };
 
-  nativeBuildInputs = [ ginkgo ];
+  nativeCheckInputs = [ ginkgo ];
 
   checkPhase = ''
     ginkgo run -r --label-filter="!e2e"
