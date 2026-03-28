@@ -1,6 +1,6 @@
 //go:build linux
 
-package main
+package e2e_test
 
 import (
 	"bytes"
@@ -165,14 +165,12 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		clientConf, err = buildCNIConf(clientNode.key, clientWgIP, 0, []cniPeer{
-			{
-				PublicKey:           serverNode.publicKey(),
-				AllowedIPs:          []string{"10.99.0.1/32"},
-				Endpoint:            fmt.Sprintf("%s:%d", serverPodIP, wgPort),
-				PersistentKeepalive: 5,
-			},
-		})
+		clientConf, err = buildCNIConf(clientNode.key, clientWgIP, 0, []cniPeer{{
+			PublicKey:           serverNode.publicKey(),
+			AllowedIPs:          []string{"10.99.0.1/32"},
+			Endpoint:            fmt.Sprintf("%s:%d", serverPodIP, wgPort),
+			PersistentKeepalive: 5,
+		}})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("invoking CNI ADD on server pod via wireguard-cni binary")
