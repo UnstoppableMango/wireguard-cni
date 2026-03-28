@@ -9,10 +9,16 @@ let
   fs = fileset;
 in
 buildGoApplication {
-  pname = "wireguard-cni";
   inherit go version;
-
+  pname = "wireguard-cni";
   modules = ../gomod2nix.toml;
+
+  ldflags = [
+    "-s"
+    "-w"
+    "-X github.com/containernetworking/plugins/pkg/utils/buildversion.BuildVersion=${version}"
+  ];
+
   src = fs.toSource {
     root = ../.;
     fileset = fs.difference (fs.gitTracked ../.) (
