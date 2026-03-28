@@ -3,13 +3,13 @@ name: CI
 on:
   push:
     branches: [main]
-    tags: ['v*']
+    tags: ["v*"]
   pull_request:
     branches: [main]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6.0.2
 
@@ -19,10 +19,63 @@ jobs:
 
       - uses: DeterminateSystems/magic-nix-cache-action@v13
 
-      - run: make build
+      - run: make bin/wireguard-cni
+
+      - if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: wireguard-cni
+          path: bin/wireguard-cni
+
+  arm:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: cachix/install-nix-action@v31.10.3
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: DeterminateSystems/magic-nix-cache-action@v13
+
+      - run: make bin/wireguard-cni
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wireguard-cni-arm
+          path: bin/wireguard-cni
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, arm]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: wireguard-cni
+          path: bin/amd64
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: wireguard-cni-arm
+          path: bin/arm64
+
+      - name: Package archives
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          mkdir -p dist
+          tar -czf "dist/wireguard-cni_${VERSION}_linux_amd64.tar.gz" -C bin/amd64 wireguard-cni
+          tar -czf "dist/wireguard-cni_${VERSION}_linux_arm64.tar.gz" -C bin/arm64 wireguard-cni
+          sha256sum dist/*.tar.gz > dist/checksums.txt
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2.6.1
+        with:
+          files: dist/*
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6.0.2
 
@@ -36,7 +89,7 @@ jobs:
       - run: sudo modprobe wireguard && make test
 
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6.0.2
 
@@ -49,7 +102,7 @@ jobs:
       - run: make check
 
   clean:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6.0.2
 
@@ -63,7 +116,7 @@ jobs:
       - run: git diff --exit-code
 
   container:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
