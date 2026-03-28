@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestE2e(t *testing.T) {
+func TestWireguardCNI(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "E2e Suite", Label("e2e"))
+	RunSpecs(t, "Wireguard CNI Suite", Label("e2e"))
 }

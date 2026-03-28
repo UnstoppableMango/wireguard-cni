@@ -42,10 +42,10 @@ test:
 		go test -v ./...
 
 test-unit:
-	$(GINKGO) run -r --label-filter="!e2e && !k8s-e2e"
+	$(GINKGO) run -r --label-filter="!e2e"
 
 test-k8s:
-	KUBECONFIG=$(KUBECONFIG) $(GINKGO) run -r --label-filter="k8s-e2e" .
+	$(GINKGO) run -r --label-filter="k8s" .
 
 go.sum: go.mod ${GO_SRC}
 	$(GO) mod tidy
@@ -78,7 +78,7 @@ result/bin/wireguard-cni: ${GO_SRC}
 	nix build .#wireguard-cni --no-update-lock-file
 
 CLUSTER    ?= wireguard-cni
-KUBECONFIG := .kube/config
+KUBECONFIG := ${CURDIR}/.kube/config
 
 .PHONY: kind kind-cluster kind-load kind-deploy kind-delete
 kind: kind-cluster kind-deploy

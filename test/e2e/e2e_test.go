@@ -81,7 +81,7 @@ func newNetConf(privKey, peerPubKey wgtypes.Key, address string, prevResult []by
 	return b
 }
 
-var _ = Describe("Integration", Ordered, Label("e2e"), func() {
+var _ = Describe("Host", Ordered, func() {
 	var (
 		testNS    ns.NetNS
 		privKey   wgtypes.Key
