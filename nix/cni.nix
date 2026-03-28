@@ -5,15 +5,18 @@
   buildGoApplication,
   version,
 }:
+let
+  fs = fileset;
+in
 buildGoApplication {
   pname = "wireguard-cni";
   inherit go version;
 
   modules = ../gomod2nix.toml;
-  src = fileset.toSource {
+  src = fs.toSource {
     root = ../.;
-    fileset = fileset.difference (fileset.gitTracked ../.) (
-      fileset.unions [
+    fileset = fs.difference (fs.gitTracked ../.) (
+      fs.unions [
         ../.editorconfig
         ../.gitignore
         ../.github
@@ -22,7 +25,7 @@ buildGoApplication {
         ../flake.lock
         ../flake.nix
         ../Makefile
-        (fileset.fileFilter (f: f.hasExt "md") ../.)
+        (fs.fileFilter (f: f.hasExt "md") ../.)
       ]
     );
   };
