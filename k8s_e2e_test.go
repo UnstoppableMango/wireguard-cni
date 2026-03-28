@@ -25,11 +25,11 @@ import (
 )
 
 // execInPod runs cmd inside a pod container and returns stdout, stderr, and any error.
-func execInPod(ctx context.Context, clientset *kubernetes.Clientset, config *rest.Config,
+func execInPod(ctx context.Context, client kubernetes.Interface, config *rest.Config,
 	namespace, pod, container string, cmd []string) (string, string, error) {
 	GinkgoHelper()
 
-	req := clientset.CoreV1().RESTClient().Post().
+	req := client.CoreV1().RESTClient().Post().
 		Resource("pods").
 		Name(pod).
 		Namespace(namespace).
@@ -55,33 +55,48 @@ func execInPod(ctx context.Context, clientset *kubernetes.Clientset, config *res
 }
 
 // waitForPodRunning polls until the named pod reaches PodRunning phase.
-func waitForPodRunning(ctx context.Context, clientset *kubernetes.Clientset, namespace, name string) {
+func waitForPodRunning(ctx context.Context, client kubernetes.Interface, namespace, name string) {
 	GinkgoHelper()
 	Eventually(func(g Gomega) {
-		pod, err := clientset.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
+		pod, err := client.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(pod.Status.Phase).To(Equal(corev1.PodRunning))
 	}, 2*time.Minute, 3*time.Second).Should(Succeed())
 }
 
 // getPodIP returns the PodIP for the named pod, failing if empty.
-func getPodIP(ctx context.Context, clientset *kubernetes.Clientset, namespace, name string) string {
+func getPodIP(ctx context.Context, client kubernetes.Interface, namespace, name string) string {
 	GinkgoHelper()
-	pod, err := clientset.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
+	pod, err := client.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(pod.Status.PodIP).NotTo(BeEmpty(), "pod %s has no PodIP", name)
 	return pod.Status.PodIP
 }
 
-// createTestPod creates a privileged pod with wireguard-tools available.
-// Returns the pod's generated name.
-func createTestPod(ctx context.Context, clientset *kubernetes.Clientset, namespace, generateName string) string {
+// createPrivKeySecret creates a Secret holding a WireGuard private key.
+// The key is stored under the "privatekey" data key.
+// Returns the created secret's name.
+func createPrivKeySecret(ctx context.Context, client kubernetes.Interface, namespace, generateName string, key wgtypes.Key) string {
 	GinkgoHelper()
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: generateName,
+			Namespace:    namespace,
+		},
+		Data: map[string][]byte{
+			"privatekey": []byte(key.String() + "\n"),
+		},
+	}
+	created, err := client.CoreV1().Secrets(namespace).Create(ctx, secret, metav1.CreateOptions{})
+	Expect(err).NotTo(HaveOccurred())
+	return created.Name
+}
 
-	privileged := true
-	uid := int64(0)
-	netAdmin := corev1.Capability("NET_ADMIN")
-	sysModule := corev1.Capability("SYS_MODULE")
+// createTestPod creates a privileged pod with wireguard-tools available.
+// The named secret is mounted read-only at /run/secrets/wireguard.
+// Returns the pod's generated name.
+func createTestPod(ctx context.Context, client kubernetes.Interface, namespace, generateName, secretName string) string {
+	GinkgoHelper()
 
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -90,6 +105,16 @@ func createTestPod(ctx context.Context, clientset *kubernetes.Clientset, namespa
 		},
 		Spec: corev1.PodSpec{
 			RestartPolicy: corev1.RestartPolicyNever,
+			Volumes: []corev1.Volume{
+				{
+					Name: "wg-privkey",
+					VolumeSource: corev1.VolumeSource{
+						Secret: &corev1.SecretVolumeSource{
+							SecretName: secretName,
+						},
+					},
+				},
+			},
 			Containers: []corev1.Container{
 				{
 					Name:            "main",
@@ -97,10 +122,20 @@ func createTestPod(ctx context.Context, clientset *kubernetes.Clientset, namespa
 					ImagePullPolicy: corev1.PullIfNotPresent,
 					Command:         []string{"sleep", "3600"},
 					SecurityContext: &corev1.SecurityContext{
-						Privileged: &privileged,
-						RunAsUser:  &uid,
+						Privileged: new(true),
+						RunAsUser:  new(int64(0)),
 						Capabilities: &corev1.Capabilities{
-							Add: []corev1.Capability{netAdmin, sysModule},
+							Add: []corev1.Capability{
+								corev1.Capability("NET_ADMIN"),
+								corev1.Capability("SYS_MODULE"),
+							},
+						},
+					},
+					VolumeMounts: []corev1.VolumeMount{
+						{
+							Name:      "wg-privkey",
+							MountPath: "/run/secrets/wireguard",
+							ReadOnly:  true,
 						},
 					},
 				},
@@ -108,7 +143,7 @@ func createTestPod(ctx context.Context, clientset *kubernetes.Clientset, namespa
 		},
 	}
 
-	created, err := clientset.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{})
+	created, err := client.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{})
 	Expect(err).NotTo(HaveOccurred())
 	return created.Name
 }
@@ -125,19 +160,19 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 	)
 
 	var (
-		ctx       context.Context
-		clientset *kubernetes.Clientset
-		config    *rest.Config
-		namespace string
-		serverPod string
-		clientPod string
-		serverKey wgtypes.Key
-		clientKey wgtypes.Key
+		ctx              context.Context
+		client           kubernetes.Interface
+		config           *rest.Config
+		namespace        string
+		serverPod        string
+		clientPod        string
+		serverKey        wgtypes.Key
+		clientKey        wgtypes.Key
+		serverSecretName string
+		clientSecretName string
 	)
 
-	BeforeAll(func() {
-		ctx = context.Background()
-
+	BeforeAll(func(ctx context.Context) {
 		By("checking for kubeconfig at $KUBECONFIG or .kube/config")
 		kubeconfig := os.Getenv("KUBECONFIG")
 		if kubeconfig == "" {
@@ -152,19 +187,19 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 		var err error
 		config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
 		Expect(err).NotTo(HaveOccurred())
-		clientset, err = kubernetes.NewForConfig(config)
+		client, err = kubernetes.NewForConfig(config)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("verifying cluster is reachable (5s timeout namespace list)")
 		reachCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
-		_, err = clientset.CoreV1().Namespaces().List(reachCtx, metav1.ListOptions{})
+		_, err = client.CoreV1().Namespaces().List(reachCtx, metav1.ListOptions{})
 		if err != nil {
 			Skip(fmt.Sprintf("cluster not reachable: %v", err))
 		}
 	})
 
-	BeforeAll(func() {
+	BeforeAll(func(ctx context.Context) {
 		By("generating WireGuard key pairs for server and client")
 		var err error
 		serverKey, err = wgtypes.GeneratePrivateKey()
@@ -178,48 +213,50 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 				GenerateName: "wg-k8s-e2e-",
 			},
 		}
-		created, err := clientset.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
+		created, err := client.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		namespace = created.Name
 		DeferCleanup(func() {
-			_ = clientset.CoreV1().Namespaces().Delete(ctx, namespace, metav1.DeleteOptions{})
+			_ = client.CoreV1().Namespaces().Delete(ctx, namespace, metav1.DeleteOptions{})
 		})
+
+		By("creating Secrets for server and client WireGuard private keys")
+		serverSecretName = createPrivKeySecret(ctx, client, namespace, "wg-server-key-", serverKey)
+		clientSecretName = createPrivKeySecret(ctx, client, namespace, "wg-client-key-", clientKey)
 	})
 
-	BeforeAll(func() {
+	BeforeAll(func(ctx context.Context) {
 		By("creating privileged server pod with wireguard-tools")
-		serverPod = createTestPod(ctx, clientset, namespace, "wg-server-")
+		serverPod = createTestPod(ctx, client, namespace, "wg-server-", serverSecretName)
 
 		By("creating privileged client pod with wireguard-tools")
-		clientPod = createTestPod(ctx, clientset, namespace, "wg-client-")
+		clientPod = createTestPod(ctx, client, namespace, "wg-client-", clientSecretName)
 
 		By("waiting for server pod to reach Running phase")
-		waitForPodRunning(ctx, clientset, namespace, serverPod)
+		waitForPodRunning(ctx, client, namespace, serverPod)
 
 		By("waiting for client pod to reach Running phase")
-		waitForPodRunning(ctx, clientset, namespace, clientPod)
+		waitForPodRunning(ctx, client, namespace, clientPod)
 	})
 
-	BeforeAll(func() {
+	BeforeAll(func(ctx context.Context) {
 		By("getting server pod IP for use as WireGuard endpoint")
-		serverPodIP := getPodIP(ctx, clientset, namespace, serverPod)
+		serverPodIP := getPodIP(ctx, client, namespace, serverPod)
 
 		By("configuring WireGuard interface on server pod")
 		serverCmds := [][]string{
 			{"ip", "link", "add", "wg0", "type", "wireguard"},
 			{"ip", "addr", "add", serverWgIP, "dev", "wg0"},
-			{"sh", "-c", fmt.Sprintf("printf '%%s' '%s' > /tmp/wg-privkey", serverKey.String())},
 			{"wg", "set", "wg0",
 				"listen-port", fmt.Sprintf("%d", wgPort),
-				"private-key", "/tmp/wg-privkey",
+				"private-key", "/run/secrets/wireguard/privatekey",
 				"peer", clientKey.PublicKey().String(),
 				"allowed-ips", serverWgNet,
 			},
-			{"rm", "/tmp/wg-privkey"},
 			{"ip", "link", "set", "wg0", "up"},
 		}
 		for _, cmd := range serverCmds {
-			stdout, stderr, err := execInPod(ctx, clientset, config, namespace, serverPod, "main", cmd)
+			stdout, stderr, err := execInPod(ctx, client, config, namespace, serverPod, "main", cmd)
 			Expect(err).NotTo(HaveOccurred(),
 				"server cmd %v failed\nstdout: %s\nstderr: %s", cmd, stdout, stderr)
 		}
@@ -228,19 +265,17 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 		clientCmds := [][]string{
 			{"ip", "link", "add", "wg0", "type", "wireguard"},
 			{"ip", "addr", "add", clientWgIP, "dev", "wg0"},
-			{"sh", "-c", fmt.Sprintf("printf '%%s' '%s' > /tmp/wg-privkey", clientKey.String())},
 			{"wg", "set", "wg0",
-				"private-key", "/tmp/wg-privkey",
+				"private-key", "/run/secrets/wireguard/privatekey",
 				"peer", serverKey.PublicKey().String(),
 				"allowed-ips", clientWgNet,
 				"endpoint", fmt.Sprintf("%s:%d", serverPodIP, wgPort),
 				"persistent-keepalive", "5",
 			},
-			{"rm", "/tmp/wg-privkey"},
 			{"ip", "link", "set", "wg0", "up"},
 		}
 		for _, cmd := range clientCmds {
-			stdout, stderr, err := execInPod(ctx, clientset, config, namespace, clientPod, "main", cmd)
+			stdout, stderr, err := execInPod(ctx, client, config, namespace, clientPod, "main", cmd)
 			Expect(err).NotTo(HaveOccurred(),
 				"client cmd %v failed\nstdout: %s\nstderr: %s", cmd, stdout, stderr)
 		}
@@ -248,13 +283,13 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 
 	It("server pod has a WireGuard interface with the correct address", func() {
 		By("checking wg0 address via 'ip addr show wg0'")
-		stdout, stderr, err := execInPod(ctx, clientset, config, namespace, serverPod, "main",
+		stdout, stderr, err := execInPod(ctx, client, config, namespace, serverPod, "main",
 			[]string{"ip", "addr", "show", "wg0"})
 		Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
 		Expect(stdout).To(ContainSubstring(serverWgAddr))
 
 		By("verifying client public key appears in 'wg show wg0'")
-		stdout, stderr, err = execInPod(ctx, clientset, config, namespace, serverPod, "main",
+		stdout, stderr, err = execInPod(ctx, client, config, namespace, serverPod, "main",
 			[]string{"wg", "show", "wg0"})
 		Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
 		Expect(stdout).To(ContainSubstring(clientKey.PublicKey().String()))
@@ -262,13 +297,13 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 
 	It("client pod has a WireGuard interface with the correct address", func() {
 		By("checking wg0 address via 'ip addr show wg0'")
-		stdout, stderr, err := execInPod(ctx, clientset, config, namespace, clientPod, "main",
+		stdout, stderr, err := execInPod(ctx, client, config, namespace, clientPod, "main",
 			[]string{"ip", "addr", "show", "wg0"})
 		Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
 		Expect(stdout).To(ContainSubstring("10.99.0.2"))
 
 		By("verifying server public key and endpoint appear in 'wg show wg0'")
-		stdout, stderr, err = execInPod(ctx, clientset, config, namespace, clientPod, "main",
+		stdout, stderr, err = execInPod(ctx, client, config, namespace, clientPod, "main",
 			[]string{"wg", "show", "wg0"})
 		Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
 		Expect(stdout).To(ContainSubstring(serverKey.PublicKey().String()))
@@ -277,7 +312,7 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 	It("WireGuard handshake completes between pods", func() {
 		By("waiting for latest-handshake timestamp to become non-zero (Eventually 30s)")
 		Eventually(func(g Gomega) {
-			stdout, stderr, err := execInPod(ctx, clientset, config, namespace, clientPod, "main",
+			stdout, stderr, err := execInPod(ctx, client, config, namespace, clientPod, "main",
 				[]string{"wg", "show", "wg0", "latest-handshakes"})
 			g.Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
 			// Output format: "<pubkey>\t<unix-timestamp>\n"
@@ -289,7 +324,7 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 		}, 30*time.Second, 2*time.Second).Should(Succeed())
 
 		By("confirming handshake timestamp is non-zero on client side")
-		stdout, stderr, err := execInPod(ctx, clientset, config, namespace, clientPod, "main",
+		stdout, stderr, err := execInPod(ctx, client, config, namespace, clientPod, "main",
 			[]string{"wg", "show", "wg0", "latest-handshakes"})
 		Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
 		parts := strings.Fields(stdout)
@@ -303,7 +338,7 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 		go func() {
 			defer GinkgoRecover()
 			// Best-effort: start listener; we don't need the result
-			execInPod(ctx, clientset, config, namespace, serverPod, "main", //nolint:errcheck
+			execInPod(ctx, client, config, namespace, serverPod, "main", //nolint:errcheck
 				[]string{"nc", "-l", "-p", fmt.Sprintf("%d", tcpPort), "-s", serverWgAddr})
 		}()
 
@@ -312,7 +347,7 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 
 		By("dialing server's WireGuard address from client pod (Eventually 15s)")
 		Eventually(func(g Gomega) {
-			stdout, stderr, err := execInPod(ctx, clientset, config, namespace, clientPod, "main",
+			stdout, stderr, err := execInPod(ctx, client, config, namespace, clientPod, "main",
 				[]string{"sh", "-c",
 					fmt.Sprintf("echo ok | nc -w 3 %s %d", serverWgAddr, tcpPort),
 				})
@@ -321,7 +356,7 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 		}, 15*time.Second, 2*time.Second).Should(Succeed())
 
 		By("confirming WireGuard transfer counters show non-zero TX bytes on client")
-		stdout, stderr, err := execInPod(ctx, clientset, config, namespace, clientPod, "main",
+		stdout, stderr, err := execInPod(ctx, client, config, namespace, clientPod, "main",
 			[]string{"wg", "show", "wg0", "transfer"})
 		Expect(err).NotTo(HaveOccurred(), "stderr: %s", stderr)
 		// Output: "<pubkey>\t<rx-bytes>\t<tx-bytes>"
