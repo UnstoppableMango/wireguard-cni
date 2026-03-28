@@ -30,7 +30,7 @@ format fmt:
 check:
 	nix flake check
 
-.PHONY: test test-unit
+.PHONY: test test-unit test-k8s
 test:
 	@mkdir -p ${GOMODCACHE}
 	$(PODMAN) run --rm \
@@ -43,6 +43,9 @@ test:
 
 test-unit:
 	$(GINKGO) run -r --label-filter="!e2e"
+
+test-k8s:
+	$(GINKGO) run -r --label-filter="k8s" .
 
 go.sum: go.mod ${GO_SRC}
 	$(GO) mod tidy
@@ -75,22 +78,22 @@ result/bin/wireguard-cni: ${GO_SRC}
 	nix build .#wireguard-cni --no-update-lock-file
 
 CLUSTER    ?= wireguard-cni
-KUBECONFIG := .kube/config
+KUBECONFIG := ${CURDIR}/.kube/config
 
 .PHONY: kind kind-cluster kind-load kind-deploy kind-delete
 kind: kind-cluster kind-deploy
 
 kind-cluster: hack/kind-config.yaml
-	$(KIND) get clusters | grep -q "^$(CLUSTER)$$" || \
-		$(KIND) create cluster --name $(CLUSTER) --config $< --kubeconfig $(KUBECONFIG)
+	$(KIND) get clusters | grep -q "^${CLUSTER}$$" || \
+		$(KIND) create cluster --name ${CLUSTER} --config $< --kubeconfig ${KUBECONFIG}
 
 kind-load: bin/stream-image.sh bin/stream-tools.sh
-	$(CURDIR)/bin/stream-image.sh | $(KIND) load image-archive /dev/stdin --name $(CLUSTER)
-	$(CURDIR)/bin/stream-tools.sh | $(KIND) load image-archive /dev/stdin --name $(CLUSTER)
+	$(CURDIR)/bin/stream-image.sh | $(KIND) load image-archive /dev/stdin --name ${CLUSTER}
+	$(CURDIR)/bin/stream-tools.sh | $(KIND) load image-archive /dev/stdin --name ${CLUSTER}
 
 kind-deploy: kind-load
-	$(KUBECTL) --kubeconfig $(KUBECONFIG) apply -k hack/
+	$(KUBECTL) --kubeconfig ${KUBECONFIG} apply -k hack/
 
 kind-delete:
-	$(KIND) get clusters | grep -q "^$(CLUSTER)$$" && \
-		$(KIND) delete cluster --name $(CLUSTER) --kubeconfig $(KUBECONFIG) || true
+	$(KIND) get clusters | grep -q "^${CLUSTER}$$" && \
+		$(KIND) delete cluster --name ${CLUSTER} --kubeconfig ${KUBECONFIG} || true

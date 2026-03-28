@@ -3,3 +3,11 @@ kind: Kustomization
 namespace: default
 resources:
   - ../kustomize/overlays/kind
+patches:
+  - patch: |-
+      - op: replace
+        path: /subjects/0/namespace
+        value: default
+    target:
+      kind: ClusterRoleBinding
+      name: wireguard-cni

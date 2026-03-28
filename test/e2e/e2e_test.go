@@ -1,30 +1,26 @@
-package main
+//go:build linux
+
+package e2e_test
 
 import (
 	"encoding/json"
 	"net"
-	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/unstoppablemango/wireguard-cni/pkg/cmd"
 
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/plugins/pkg/ip"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/testutils"
+	"github.com/unstoppablemango/wireguard-cni/pkg/cmd"
 	"github.com/vishvananda/netlink"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 const IfName = "wg0"
-
-func TestWireguardCNI(t *testing.T) {
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "WireGuard CNI Suite")
-}
 
 // assignAddrAndUp assigns a CIDR address to the named interface and brings it up.
 // Must be called from within the target network namespace.
@@ -73,12 +69,10 @@ func newNetConf(privKey, peerPubKey wgtypes.Key, address string, prevResult []by
 		"type":       "wireguard-cni",
 		"address":    address,
 		"privateKey": privKey.String(),
-		"peers": []map[string]any{
-			{
-				"publicKey":  peerPubKey.String(),
-				"allowedIPs": []string{"10.0.0.0/8"},
-			},
-		},
+		"peers": []map[string]any{{
+			"publicKey":  peerPubKey.String(),
+			"allowedIPs": []string{"10.0.0.0/8"},
+		}},
 	}
 	if prevResult != nil {
 		conf["prevResult"] = json.RawMessage(prevResult)
@@ -87,7 +81,7 @@ func newNetConf(privKey, peerPubKey wgtypes.Key, address string, prevResult []by
 	return b
 }
 
-var _ = Describe("Integration", Ordered, Label("e2e"), func() {
+var _ = Describe("Host", Ordered, func() {
 	var (
 		testNS    ns.NetNS
 		privKey   wgtypes.Key
@@ -296,13 +290,11 @@ var _ = Describe("E2E", Ordered, Label("e2e"), func() {
 				PrivateKey:   &serverKey,
 				ListenPort:   new(51820),
 				ReplacePeers: true,
-				Peers: []wgtypes.PeerConfig{
-					{
-						PublicKey:         clientKey.PublicKey(),
-						ReplaceAllowedIPs: true,
-						AllowedIPs:        []net.IPNet{*allowedNet},
-					},
-				},
+				Peers: []wgtypes.PeerConfig{{
+					PublicKey:         clientKey.PublicKey(),
+					ReplaceAllowedIPs: true,
+					AllowedIPs:        []net.IPNet{*allowedNet},
+				}},
 			})).To(Succeed())
 			return nil
 		})).To(Succeed())
@@ -313,14 +305,12 @@ var _ = Describe("E2E", Ordered, Label("e2e"), func() {
 			"type":       "wireguard-cni",
 			"address":    "10.99.0.2/24",
 			"privateKey": clientKey.String(),
-			"peers": []map[string]any{
-				{
-					"publicKey":           serverKey.PublicKey().String(),
-					"allowedIPs":          []string{"10.99.0.1/32"},
-					"endpoint":            "10.200.0.2:51820",
-					"persistentKeepalive": 5,
-				},
-			},
+			"peers": []map[string]any{{
+				"publicKey":           serverKey.PublicKey().String(),
+				"allowedIPs":          []string{"10.99.0.1/32"},
+				"endpoint":            "10.200.0.2:51820",
+				"persistentKeepalive": 5,
+			}},
 		})
 		Expect(err).NotTo(HaveOccurred())
 	})
