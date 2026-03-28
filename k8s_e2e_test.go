@@ -92,7 +92,7 @@ var _ = Describe("Kubernetes E2E", Ordered, Label("k8s-e2e"), func() {
 	)
 
 	BeforeAll(func(ctx context.Context) {
-		By("checking for kubeconfig at $KUBECONFIG or .kube/config")
+		By("checking for kubeconfig at $KUBECONFIG")
 		kubeconfig := os.Getenv("KUBECONFIG")
 		if _, err := os.Stat(kubeconfig); err != nil {
 			Skip(fmt.Sprintf("kubeconfig not found at %s: %v", kubeconfig, err))
@@ -426,6 +426,9 @@ func (n *Node) invokeCNI(ctx context.Context, podName, command, containerID, net
 		fmt.Sprintf("CNI_NETNS=%s", netns),
 		fmt.Sprintf("CNI_IFNAME=%s", ifName),
 		"CNI_PATH=/opt/cni/bin",
+		// CNI skel rejects calls where the plugin's netns matches CNI_NETNS.
+		// Since this binary runs inside the target pod they are always the same.
+		"CNI_NETNS_OVERRIDE=1",
 		"/opt/cni/bin/wireguard-cni",
 	}
 	return n.execWithStdin(ctx, podName, cmd, bytes.NewReader(config))
