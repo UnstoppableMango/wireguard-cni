@@ -15,6 +15,12 @@
         go = pkgs.go_1_26;
       };
 
+      wireguard-cni-arm64 = wireguard-cni.overrideAttrs (_: {
+        GOARCH = "arm64";
+        CGO_ENABLED = "0";
+        doCheck = false;
+      });
+
       ctr = pkgs.callPackage ./container.nix {
         inherit wireguard-cni;
       };
@@ -23,7 +29,13 @@
     in
     {
       packages = {
-        inherit wireguard-cni ctr ctrtools;
+        inherit
+          wireguard-cni
+          wireguard-cni-arm64
+          ctr
+          ctrtools
+          ;
+
         default = wireguard-cni;
       };
     };
