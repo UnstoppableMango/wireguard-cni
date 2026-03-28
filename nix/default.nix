@@ -18,10 +18,12 @@
       ctr = pkgs.callPackage ./container.nix {
         inherit wireguard-cni;
       };
+
+      ctrtools = pkgs.callPackage ./tools.nix { };
     in
     {
       packages = {
-        inherit wireguard-cni ctr;
+        inherit wireguard-cni ctr ctrtools;
         default = wireguard-cni;
       };
     };

@@ -20,8 +20,9 @@ docker container ctr: bin/image.tar
 cover: coverprofile.out
 	$(GO) tool cover -func=$<
 
-load: bin/stream-image.sh
-	${CURDIR}/$< | $(PODMAN) load
+load: bin/stream-image.sh bin/stream-tools.sh
+	${CURDIR}/bin/stream-image.sh | $(PODMAN) load
+	${CURDIR}/bin/stream-tools.sh | $(PODMAN) load
 
 format fmt:
 	nix fmt
@@ -52,8 +53,10 @@ gomod2nix.toml: go.sum
 bin/wireguard-cni: | result/bin/wireguard-cni
 	mkdir -p ${@D} && ln -sf ${CURDIR}/$| ${CURDIR}/$@
 
-bin/stream-image.sh: ${GO_SRC}
+bin/stream-image.sh: ${GO_SRC} nix/container.nix
 	nix build .#ctr --out-link $@ --no-update-lock-file
+bin/stream-tools.sh: nix/tools.nix
+	nix build .#ctrtools --out-link $@ --no-update-lock-file
 
 bin/image.tar: bin/stream-image.sh
 	${CURDIR}/$< | $(SKOPEO) copy \
@@ -81,8 +84,9 @@ kind-cluster: hack/kind-config.yaml
 	$(KIND) get clusters | grep -q "^$(CLUSTER)$$" || \
 		$(KIND) create cluster --name $(CLUSTER) --config $< --kubeconfig $(KUBECONFIG)
 
-kind-load: bin/stream-image.sh
-	$(CURDIR)/$< | $(KIND) load image-archive /dev/stdin --name $(CLUSTER)
+kind-load: bin/stream-image.sh bin/stream-tools.sh
+	$(CURDIR)/bin/stream-image.sh | $(KIND) load image-archive /dev/stdin --name $(CLUSTER)
+	$(CURDIR)/bin/stream-tools.sh | $(KIND) load image-archive /dev/stdin --name $(CLUSTER)
 
 kind-deploy: kind-load
 	$(KUBECTL) --kubeconfig $(KUBECONFIG) apply -k hack/
