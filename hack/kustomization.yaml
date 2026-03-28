@@ -3,3 +3,10 @@ kind: Kustomization
 namespace: default
 resources:
   - ../kustomize/overlays/kind
+patches:
+  - patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: wireguard-cni
