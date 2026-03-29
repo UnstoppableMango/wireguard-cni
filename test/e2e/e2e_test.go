@@ -227,6 +227,11 @@ var _ = Describe("Host interface configuration", func() {
 
 var _ = Describe("Isolated mode", Label("e2e"), func() {
 	for _, ver := range testutils.AllSpecVersions {
+		// CNI 0.1.0 and 0.2.0 predate chained mode; their result type has no
+		// Interfaces field, so prevResult-based tests don't apply.
+		if ver == "0.1.0" || ver == "0.2.0" {
+			continue
+		}
 		Describe(fmt.Sprintf("cni %s", ver), Label(ver), func() {
 			It("ADD with isolated:true and a prevResult returns an error", func() {
 				testNS, err := testutils.NewNS()
