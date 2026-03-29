@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"bytes"
 	"context"
 	"io"
 
@@ -12,60 +13,64 @@ import (
 type Pod struct {
 	client    *Client
 	namespace string
-	prefix    string
+	name      string
 	key       wgtypes.Key
 }
 
-func NewPod(client *Client, prefix, namespace string) (*Pod, error) {
+func NewPod(client *Client, namespace, name string) (*Pod, error) {
 	key, err := wgtypes.GeneratePrivateKey()
 	if err != nil {
 		return nil, err
 	}
 
 	return &Pod{
+		name:      name,
 		namespace: namespace,
-		prefix:    prefix,
 		key:       key,
 		client:    client,
 	}, nil
+}
+
+func CreatePod(ctx context.Context, client *Client, prefix, namespace string) (*Pod, error) {
+	res := resource(prefix, namespace)
+	pod, err := client.CoreV1().
+		Pods(namespace).
+		Create(ctx, res, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	return NewPod(client, namespace, pod.Name)
 }
 
 func (n *Pod) PublicKey() string {
 	return n.key.PublicKey().String()
 }
 
-func (n *Pod) Create(ctx context.Context) (*corev1.Pod, error) {
-	pod := n.resource(n.objectMeta())
-
+func (n *Pod) Get(ctx context.Context) (*corev1.Pod, error) {
 	return n.client.CoreV1().
 		Pods(n.namespace).
-		Create(ctx, pod, metav1.CreateOptions{})
+		Get(ctx, n.name, metav1.GetOptions{})
 }
 
-func (n *Pod) Get(ctx context.Context, name string) (*corev1.Pod, error) {
-	return n.client.CoreV1().
-		Pods(n.namespace).
-		Get(ctx, name, metav1.GetOptions{})
+func (n *Pod) Exec(ctx context.Context, cmd []string, stdin io.Reader) (string, string, error) {
+	return n.client.Exec(ctx, n.name, n.namespace, cmd, stdin)
 }
 
-func (n *Pod) Exec(ctx context.Context, pod string, cmd []string) (string, string, error) {
-	return n.execWithStdin(ctx, pod, cmd, nil)
+func (p *Pod) InvokeCNI(ctx context.Context, command string, conf []byte) (string, string, error) {
+	return p.Exec(ctx, InvokeCNI(command), bytes.NewReader(conf))
 }
 
-func (n *Pod) execWithStdin(ctx context.Context, pod string, cmd []string, stdin io.Reader) (string, string, error) {
-	return n.client.Exec(ctx, pod, n.namespace, cmd, stdin)
+func (p *Pod) CniConfig(address string, listenPort int, peers []CNIPeer) ([]byte, error) {
+	return cniConf(p.key, address, listenPort, peers)
 }
 
-func (n *Pod) objectMeta() metav1.ObjectMeta {
-	return metav1.ObjectMeta{
-		GenerateName: n.prefix,
-		Namespace:    n.namespace,
-	}
-}
-
-func (n *Pod) resource(meta metav1.ObjectMeta) *corev1.Pod {
+func resource(prefix, namespace string) *corev1.Pod {
 	return &corev1.Pod{
-		ObjectMeta: meta,
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: prefix,
+			Namespace:    namespace,
+		},
 		Spec: corev1.PodSpec{
 			RestartPolicy: corev1.RestartPolicyNever,
 			Volumes: []corev1.Volume{{

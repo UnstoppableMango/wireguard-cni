@@ -1,32 +1,13 @@
 package e2e_test
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+	"github.com/unstoppablemango/wireguard-cni/test/utils"
 )
-
-type cniPeer struct {
-	PublicKey           string   `json:"publicKey"`
-	AllowedIPs          []string `json:"allowedIPs"`
-	Endpoint            string   `json:"endpoint,omitempty"`
-	PersistentKeepalive int      `json:"persistentKeepalive,omitempty"`
-}
-
-func buildCNIConf(key wgtypes.Key, address string, listenPort int, peers []cniPeer) ([]byte, error) {
-	conf := map[string]any{
-		"cniVersion": "1.0.0",
-		"name":       "wg-k8s-e2e",
-		"type":       "wireguard-cni",
-		"address":    address,
-		"privateKey": key.String(),
-		"peers":      peers,
-	}
-	if listenPort != 0 {
-		conf["listenPort"] = listenPort
-	}
-	return json.Marshal(conf)
-}
 
 // withPrevResult embeds a CNI ADD result as prevResult for use in CHECK calls.
 func withPrevResult(conf, prevResult []byte) ([]byte, error) {
@@ -36,4 +17,23 @@ func withPrevResult(conf, prevResult []byte) ([]byte, error) {
 	}
 	m["prevResult"] = json.RawMessage(prevResult)
 	return json.Marshal(m)
+}
+
+// invokeCNI runs the wireguard-cni binary inside the named pod with the CNI
+// environment variables set and the given config JSON passed on stdin.
+func invokeCNI(ctx context.Context, p *utils.Pod, command, containerID, netns, ifName string, config []byte) (string, string, error) {
+	cmd := []string{
+		"env",
+		fmt.Sprintf("CNI_COMMAND=%s", command),
+		fmt.Sprintf("CNI_CONTAINERID=%s", containerID),
+		fmt.Sprintf("CNI_NETNS=%s", netns),
+		fmt.Sprintf("CNI_IFNAME=%s", ifName),
+		"CNI_PATH=/opt/cni/bin",
+		// CNI skel rejects calls where the plugin's netns matches CNI_NETNS.
+		// Since this binary runs inside the target pod they are always the same.
+		"CNI_NETNS_OVERRIDE=1",
+		"/opt/cni/bin/wireguard-cni",
+	}
+
+	return p.Exec(ctx, cmd, bytes.NewReader(config))
 }
