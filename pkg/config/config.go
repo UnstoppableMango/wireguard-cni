@@ -88,12 +88,13 @@ func (c *Config) MergedResult(args *skel.CmdArgs) (*current.Result, error) {
 		return nil, fmt.Errorf("invalid address %q: %v", c.Address, err)
 	}
 
+	idx := len(prev.Interfaces)
 	prev.Interfaces = append(prev.Interfaces, &current.Interface{
 		Name:    args.IfName,
 		Sandbox: args.Netns,
 	})
 	prev.IPs = append(prev.IPs, &current.IPConfig{
-		Interface: new(len(prev.Interfaces)),
+		Interface: &idx,
 		Address:   net.IPNet{IP: ip, Mask: ipnet.Mask},
 	})
 	return prev, nil
