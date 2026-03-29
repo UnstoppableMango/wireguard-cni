@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -102,6 +103,21 @@ var _ = Describe("Kubernetes", Ordered, Label("k8s"), func() {
 				stdout, stderr, err = client.InvokeCNI(ctx, "ADD", clientConf)
 				Expect(err).NotTo(HaveOccurred(), "client CNI ADD failed\nstderr: %s\n stdout: %s", stderr, stdout)
 				clientAddResult = []byte(stdout)
+
+				By("starting persistent nc listener on server pod for TCP test")
+				var listenerWg sync.WaitGroup
+				listenerCtx, cancelListener := context.WithCancel(context.Background())
+				listenerWg.Add(1)
+				go func() {
+					defer listenerWg.Done()
+					server.Exec(listenerCtx, []string{"nc", "-l", "-k", fmt.Sprintf("%d", tcpPort)}, nil) //nolint:errcheck
+				}()
+				DeferCleanup(func() {
+					cancelListener()
+					listenerWg.Wait()
+				})
+				// Give nc a moment to bind before any test runs
+				time.Sleep(500 * time.Millisecond)
 			})
 
 			It("server pod has a WireGuard interface with the correct address", func(ctx context.Context) {
@@ -142,16 +158,6 @@ var _ = Describe("Kubernetes", Ordered, Label("k8s"), func() {
 			})
 
 			It("TCP traffic flows through the WireGuard tunnel, not direct pod networking", func(ctx context.Context) {
-				By("starting netcat listener on server pod (reachable only via wg0 tunnel from client)")
-				// -k keeps the listener alive across Eventually retries.
-				go func() {
-					defer GinkgoRecover()
-					server.Exec(ctx, []string{"nc", "-l", "-k", fmt.Sprintf("%d", tcpPort)}, nil) //nolint:errcheck
-				}()
-
-				// Give nc a moment to bind
-				time.Sleep(500 * time.Millisecond)
-
 				By("dialing server's WireGuard address from client pod (Eventually 15s)")
 				Eventually(func(g Gomega) {
 					stdout, stderr, err := client.Exec(ctx, []string{"sh", "-c",
