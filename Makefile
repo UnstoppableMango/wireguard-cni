@@ -39,7 +39,7 @@ test:
 		-v "${GOMODCACHE}:/go/pkg/mod" \
 		-w /src \
 		golang:$(GOVERSION) \
-		go test -v ./...
+		go test -v ./... -ginkgo.label-filter="!k8s"
 
 test-unit:
 	$(GINKGO) run -r --label-filter="!e2e"
