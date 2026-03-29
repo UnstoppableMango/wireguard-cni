@@ -1,5 +1,7 @@
 # wireguard-cni
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/UnstoppableMango/wireguard-cni/badge)](https://scorecard.dev/viewer/?uri=github.com/UnstoppableMango/wireguard-cni)
+
 A [CNI (Container Network Interface)](https://github.com/containernetworking/cni) plugin that configures WireGuard interfaces inside container network namespaces.
 
 ## How it works
