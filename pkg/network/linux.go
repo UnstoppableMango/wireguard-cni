@@ -44,14 +44,14 @@ func (m netlinkManager) newLink() netlink.Link {
 }
 
 func (m netlinkManager) Delete() error {
-	if link, err := m.get(); err != nil {
-		if _, ok := err.(netlink.LinkNotFoundError); ok {
-			return nil
-		}
-		return err
-	} else {
-		return netlink.LinkDel(link)
+	link, err := m.get()
+	if errors.As(err, &netlink.LinkNotFoundError{}) {
+		return nil
 	}
+	if err != nil {
+		return err
+	}
+	return netlink.LinkDel(link)
 }
 
 func (m netlinkManager) get() (netlink.Link, error) {
@@ -59,11 +59,11 @@ func (m netlinkManager) get() (netlink.Link, error) {
 }
 
 func (m netlinkManager) Get() (Link, error) {
-	if link, err := m.get(); err != nil {
+	link, err := m.get()
+	if err != nil {
 		return nil, err
-	} else {
-		return &netlinkLink{link}, nil
 	}
+	return &netlinkLink{link}, nil
 }
 
 // netlinkLink implements Link wrapping a resolved netlink.Link.

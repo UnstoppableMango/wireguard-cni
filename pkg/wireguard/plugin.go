@@ -20,7 +20,7 @@ func Add(mgr network.LinkManager, conf *config.Config) error {
 	zap.L().Info("creating wireguard link")
 	link, err := mgr.Create()
 	if err != nil {
-		return fmt.Errorf("add link: %s", err)
+		return fmt.Errorf("add link: %w", err)
 	}
 
 	zap.L().Info("configuring wireguard link")
