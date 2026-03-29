@@ -6,12 +6,8 @@ KIND      ?= kind
 KUBECTL   ?= kubectl
 SKOPEO    ?= skopeo
 
-VERSION     ?= v0.0.1-alpha
-IMAGE       ?= localhost/wireguard-cni
-CNI_VERSION ?= 1.0.0
-
-GOVERSION  ?= $(shell $(GO) env GOVERSION | sed 's/go//')
-GOMODCACHE ?= $(shell $(GO) env GOMODCACHE)
+VERSION ?= v0.0.1-alpha
+IMAGE   ?= localhost/wireguard-cni
 
 GO_SRC := $(shell find . -name '*.go')
 
@@ -34,9 +30,9 @@ check:
 
 .PHONY: test test-unit test-k8s
 test:
-	./scripts/test.sh ./... -ginkgo.label-filter="!k8s"
+	LABEL_FILTER="!k8s" scripts/test.sh
 test-unit:
-	./scripts/test.sh ./... -ginkgo.label-filter="!e2e"
+	LABEL_FILTER="!e2e" scripts/test.sh
 test-k8s:
 	$(GINKGO) run --label-filter="k8s" ./test/e2e
 
