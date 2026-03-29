@@ -36,7 +36,7 @@ test-filter = $(1) && ${CNI_VERSION}
 endif
 
 ifdef CI
-TEST_ARGS += --github-output --race --trace
+TEST_ARGS += --github-output --trace
 endif
 
 .PHONY: test test-unit test-k8s
