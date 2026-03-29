@@ -56,7 +56,7 @@ var _ = Describe("Add", func() {
 
 		err := wireguard.Add(mgr, conf)
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("failed to add link"))
+		Expect(err).To(MatchError("add link: create failed"))
 	})
 
 	It("deletes the link when setup fails", func() {
@@ -66,7 +66,7 @@ var _ = Describe("Add", func() {
 
 		err := wireguard.Add(mgr, conf)
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("failed to setup link"))
+		Expect(err).To(MatchError(ContainSubstring("assign address")))
 		Expect(mgr.deleted).To(BeTrue())
 	})
 
@@ -77,6 +77,7 @@ var _ = Describe("Add", func() {
 
 		err := wireguard.Add(mgr, conf)
 		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("assign address"))
 	})
 
 	It("returns error when ConfigureWireGuard fails", func() {
@@ -95,6 +96,7 @@ var _ = Describe("Add", func() {
 
 		err := wireguard.Add(mgr, conf)
 		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("set link up"))
 	})
 
 	It("returns error when AddRoute fails", func() {
@@ -104,6 +106,7 @@ var _ = Describe("Add", func() {
 
 		err := wireguard.Add(mgr, conf)
 		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("add route"))
 	})
 
 	It("adds routes for all peers and CIDRs", func() {

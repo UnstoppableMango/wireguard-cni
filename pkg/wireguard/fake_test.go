@@ -1,6 +1,7 @@
 package wireguard_test
 
 import (
+	"fmt"
 	"net"
 
 	"github.com/unstoppablemango/wireguard-cni/pkg/network"
@@ -48,6 +49,10 @@ func (f *fakeLink) Addresses() ([]*net.IPNet, error) {
 
 func (f *fakeLink) PublicKey() (wgtypes.Key, error) {
 	return f.publicKey, f.publicKeyErr
+}
+
+func (f *fakeLink) String() string {
+	return fmt.Sprintf("fake(%s)", f.assignedAddr.IP)
 }
 
 // fakeLinkManager implements network.LinkManager.

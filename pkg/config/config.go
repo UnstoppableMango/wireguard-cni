@@ -81,11 +81,11 @@ func (c *Config) MergedResult(args *skel.CmdArgs) (*current.Result, error) {
 
 	prev, err := current.GetResult(c.PrevResult)
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert prevResult: %v", err)
+		return nil, fmt.Errorf("failed to convert prevResult: %w", err)
 	}
 	ip, ipnet, err := net.ParseCIDR(c.Address)
 	if err != nil {
-		return nil, fmt.Errorf("invalid address %q: %v", c.Address, err)
+		return nil, fmt.Errorf("invalid address %q: %w", c.Address, err)
 	}
 
 	idx := len(prev.Interfaces)

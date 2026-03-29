@@ -20,7 +20,7 @@ func Add(mgr network.LinkManager, conf *config.Config) error {
 	zap.L().Info("creating wireguard link")
 	link, err := mgr.Create()
 	if err != nil {
-		return fmt.Errorf("add link %s: %w", link, err)
+		return fmt.Errorf("add link: %s", err)
 	}
 
 	zap.L().Info("configuring wireguard link")
@@ -43,7 +43,7 @@ func Check(mgr network.LinkManager, conf *config.Config) error {
 	}
 	link, err := mgr.Get()
 	if err != nil {
-		return fmt.Errorf("check link %s: %w", link, err)
+		return fmt.Errorf("check link: %w", err)
 	}
 
 	zap.L().Info("checking link address", zap.String("expected", addr.String()))
@@ -71,12 +71,12 @@ func Check(mgr network.LinkManager, conf *config.Config) error {
 func setup(link network.Link, addr *net.IPNet, conf *wgtypes.Config) error {
 	zap.L().Info("assigning address", zap.String("address", addr.String()))
 	if err := link.AssignAddress(addr); err != nil {
-		return fmt.Errorf("assign address %s: %w", addr, err)
+		return fmt.Errorf("assign address %v: %w", addr, err)
 	}
 
 	zap.L().Info("applying wireguard configuration")
 	if err := link.ConfigureWireGuard(*conf); err != nil {
-		return fmt.Errorf("configure device %s: %w", link, err)
+		return fmt.Errorf("configure device %v: %w", link, err)
 	}
 
 	zap.L().Info("bringing link up")
@@ -88,7 +88,7 @@ func setup(link network.Link, addr *net.IPNet, conf *wgtypes.Config) error {
 		for _, ip := range peer.AllowedIPs {
 			zap.L().Info("adding route", zap.String("dst", ip.String()))
 			if err := link.AddRoute(new(ip)); err != nil {
-				return fmt.Errorf("add route %s: %w", ip.IP, err)
+				return fmt.Errorf("add route %v: %w", ip, err)
 			}
 		}
 	}
