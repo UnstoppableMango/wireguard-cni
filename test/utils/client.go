@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -65,13 +66,24 @@ func (c *Client) Exec(ctx context.Context, pod, namespace string, cmd []string, 
 		return "", "", err
 	}
 
-	var stdout, stderr bytes.Buffer
+	stdoutR, stdoutW := io.Pipe()
+	stderrR, stderrW := io.Pipe()
+
+	var wg sync.WaitGroup
+	var stdoutBuf, stderrBuf bytes.Buffer
+	wg.Go(func() { io.Copy(&stdoutBuf, stdoutR) }) //nolint:errcheck
+	wg.Go(func() { io.Copy(&stderrBuf, stderrR) }) //nolint:errcheck
+
 	err = executor.StreamWithContext(ctx, remotecommand.StreamOptions{
 		Stdin:  stdin,
-		Stdout: &stdout,
-		Stderr: &stderr,
+		Stdout: stdoutW,
+		Stderr: stderrW,
 	})
-	return stdout.String(), stderr.String(), err
+	stdoutW.CloseWithError(err)
+	stderrW.CloseWithError(err)
+	wg.Wait()
+
+	return stdoutBuf.String(), stderrBuf.String(), err
 }
 
 func (c *Client) CreatePod(ctx context.Context, prefix, namespace, addr string) (*Pod, error) {
