@@ -24,9 +24,11 @@ func Add(args *skel.CmdArgs) error {
 	}
 
 	ctx := context.Background()
-	if _, err := resolvePrivateKey(ctx, conf); err != nil {
+	key, err := resolvePrivateKey(ctx, conf)
+	if err != nil {
 		return err
 	}
+	conf.PrivateKey = key
 
 	if conf.PrevResult != nil {
 		if ok, err := version.GreaterThanOrEqualTo(conf.CNIVersion, "0.3.0"); err != nil || !ok {
@@ -62,9 +64,12 @@ func Check(args *skel.CmdArgs) error {
 	}
 
 	ctx := context.Background()
-	if _, err := resolvePrivateKey(ctx, conf); err != nil {
+	key, err := resolvePrivateKey(ctx, conf)
+	if err != nil {
 		return err
 	}
+	conf.PrivateKey = key
+
 	if conf.PrevResult == nil {
 		return ErrPrevResult
 	}
