@@ -41,9 +41,9 @@ type CNIPeer struct {
 	PersistentKeepalive int      `json:"persistentKeepalive,omitempty"`
 }
 
-func cniConf(key wgtypes.Key, address string, listenPort int, peers []CNIPeer) ([]byte, error) {
+func cniConf(key wgtypes.Key, address, version string, listenPort int, peers []CNIPeer) ([]byte, error) {
 	conf := map[string]any{
-		"cniVersion": "1.0.0",
+		"cniVersion": version,
 		"name":       "wg-k8s-e2e",
 		"type":       "wireguard-cni",
 		"address":    address,

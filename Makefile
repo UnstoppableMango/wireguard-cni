@@ -6,10 +6,8 @@ KIND      ?= kind
 KUBECTL   ?= kubectl
 SKOPEO    ?= skopeo
 
-VERSION    ?= v0.0.1-alpha
-IMAGE      ?= localhost/wireguard-cni
-GOVERSION  ?= $(shell $(GO) env GOVERSION | sed 's/go//')
-GOMODCACHE ?= $(shell $(GO) env GOMODCACHE)
+VERSION ?= v0.0.1-alpha
+IMAGE   ?= localhost/wireguard-cni
 
 GO_SRC := $(shell find . -name '*.go')
 
@@ -30,22 +28,24 @@ format fmt:
 check:
 	nix flake check
 
+CNI_VERSION ?= all
+test-filter = $(1)
+
+ifneq (${CNI_VERSION},all)
+test-filter = $(1) && ${CNI_VERSION}
+endif
+
+ifdef CI
+TEST_ARGS += --github-output --trace
+endif
+
 .PHONY: test test-unit test-k8s
 test:
-	@mkdir -p ${GOMODCACHE}
-	$(PODMAN) run --rm \
-		--privileged \
-		-v "${CURDIR}:/src" \
-		-v "${GOMODCACHE}:/go/pkg/mod" \
-		-w /src \
-		golang:$(GOVERSION) \
-		go test -v ./... -ginkgo.label-filter="!k8s"
-
+	LABEL_FILTER="$(call test-filter,!k8s)" hack/container-test.sh
 test-unit:
-	$(GINKGO) run -r --label-filter="!e2e"
-
+	$(GINKGO) run -r --label-filter="$(call test-filter,!e2e)" ${TEST_ARGS}
 test-k8s:
-	$(GINKGO) run -r --label-filter="k8s" .
+	$(GINKGO) run --label-filter="$(call test-filter,k8s)" ${TEST_ARGS} ./test/e2e
 
 go.sum: go.mod ${GO_SRC}
 	$(GO) mod tidy

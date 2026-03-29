@@ -52,8 +52,8 @@ func (p *Pod) InvokeCNI(ctx context.Context, command string, conf []byte) (strin
 	return p.Exec(ctx, InvokeCNI(command), bytes.NewReader(conf))
 }
 
-func (p *Pod) CniConfig(listenPort int, peers []CNIPeer) ([]byte, error) {
-	return cniConf(p.key, p.addr+"/24", listenPort, peers)
+func (p *Pod) CniConfig(version string, listenPort int, peers []CNIPeer) ([]byte, error) {
+	return cniConf(p.key, p.addr+"/24", version, listenPort, peers)
 }
 
 func (p *Pod) ClientPeer() CNIPeer {
