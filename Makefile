@@ -28,13 +28,24 @@ format fmt:
 check:
 	nix flake check
 
+CNI_VERSION ?= all
+test-filter = $(1)
+
+ifneq (${CNI_VERSION},all)
+test-filter = $(1) && ${CNI_VERSION}
+endif
+
+ifdef CI
+TEST_ARGS += --github-output --race --trace
+endif
+
 .PHONY: test test-unit test-k8s
 test:
-	LABEL_FILTER="!k8s" scripts/test.sh
+	LABEL_FILTER="$(call test-filter,!k8s)" hack/container-test.sh
 test-unit:
-	LABEL_FILTER="!e2e" scripts/test.sh
+	$(GINKGO) run -r --label-filter="$(call test-filter,!e2e)" ${TEST_ARGS}
 test-k8s:
-	$(GINKGO) run --label-filter="k8s" ./test/e2e
+	$(GINKGO) run --label-filter="$(call test-filter,k8s)" ${TEST_ARGS} ./test/e2e
 
 go.sum: go.mod ${GO_SRC}
 	$(GO) mod tidy
