@@ -18,7 +18,7 @@ type PeerConfig struct {
 	PersistentKeepalive int      `json:"persistentKeepalive,omitempty"`
 }
 
-func (c *PeerConfig) ResolveUDPEndpoint() (*net.UDPAddr, error) {
+func (c *PeerConfig) ResolveUDPAddr() (*net.UDPAddr, error) {
 	if c.Endpoint == "" {
 		return nil, nil
 	}
@@ -30,6 +30,7 @@ type Config struct {
 	Address    string       `json:"address"`
 	PrivateKey string       `json:"privateKey"`
 	ListenPort int          `json:"listenPort,omitempty"`
+	Isolated   bool         `json:"isolated,omitempty"`
 	Peers      []PeerConfig `json:"peers"`
 }
 
@@ -70,10 +71,39 @@ func (c *Config) Result(args *skel.CmdArgs) (*current.Result, error) {
 	}, nil
 }
 
-func (c *Config) PrintResult(args *skel.CmdArgs) error {
-	if result, err := c.Result(args); err != nil {
-		return err
-	} else {
-		return types.PrintResult(result, c.CNIVersion)
+// MergedResult returns the CNI result for this Add invocation.
+// In chained mode (PrevResult != nil), the WireGuard interface and IP are
+// appended to prevResult. Otherwise a standalone WireGuard-only result is returned.
+func (c *Config) MergedResult(args *skel.CmdArgs) (*current.Result, error) {
+	if c.PrevResult == nil {
+		return c.Result(args)
 	}
+
+	prev, err := current.GetResult(c.PrevResult)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert prevResult: %v", err)
+	}
+	ip, ipnet, err := net.ParseCIDR(c.Address)
+	if err != nil {
+		return nil, fmt.Errorf("invalid address %q: %v", c.Address, err)
+	}
+
+	idx := len(prev.Interfaces)
+	prev.Interfaces = append(prev.Interfaces, &current.Interface{
+		Name:    args.IfName,
+		Sandbox: args.Netns,
+	})
+	prev.IPs = append(prev.IPs, &current.IPConfig{
+		Interface: &idx,
+		Address:   net.IPNet{IP: ip, Mask: ipnet.Mask},
+	})
+	return prev, nil
+}
+
+func (c *Config) PrintResult(args *skel.CmdArgs) error {
+	result, err := c.MergedResult(args)
+	if err != nil {
+		return err
+	}
+	return types.PrintResult(result, c.CNIVersion)
 }

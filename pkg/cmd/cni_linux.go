@@ -16,8 +16,8 @@ func Add(args *skel.CmdArgs) error {
 	if err != nil {
 		return err
 	}
-	if conf.PrevResult != nil {
-		return ErrFirstPlugin
+	if conf.Isolated && conf.PrevResult != nil {
+		return ErrIsolated
 	}
 
 	if err := ns.WithNetNSPath(args.Netns, func(ns.NetNS) error {

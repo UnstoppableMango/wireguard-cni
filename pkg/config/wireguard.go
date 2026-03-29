@@ -68,7 +68,7 @@ func peerConfig(c PeerConfig) (*wgtypes.PeerConfig, error) {
 	}
 
 	if c.Endpoint != "" {
-		if addr, err := c.ResolveUDPEndpoint(); err != nil {
+		if addr, err := c.ResolveUDPAddr(); err != nil {
 			return nil, err
 		} else {
 			pc.Endpoint = addr

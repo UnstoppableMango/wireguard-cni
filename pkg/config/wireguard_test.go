@@ -11,6 +11,10 @@ import (
 )
 
 func newNetConf(privKey, peerPubKey, address string) []byte {
+	return newNetConfWithPrevResult(privKey, peerPubKey, address, nil)
+}
+
+func newNetConfWithPrevResult(privKey, peerPubKey, address string, prevResult []byte) []byte {
 	conf := map[string]any{
 		"cniVersion": "1.0.0",
 		"name":       "wg-test",
@@ -23,6 +27,9 @@ func newNetConf(privKey, peerPubKey, address string) []byte {
 				"allowedIPs": []string{"10.0.0.0/8"},
 			},
 		},
+	}
+	if prevResult != nil {
+		conf["prevResult"] = json.RawMessage(prevResult)
 	}
 	b, _ := json.Marshal(conf)
 	return b
