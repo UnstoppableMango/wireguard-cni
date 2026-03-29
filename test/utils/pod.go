@@ -3,6 +3,7 @@ package utils
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -14,10 +15,11 @@ type Pod struct {
 	client    *Client
 	namespace string
 	name      string
+	addr      string
 	key       wgtypes.Key
 }
 
-func NewPod(client *Client, namespace, name string) (*Pod, error) {
+func NewPod(client *Client, namespace, name, addr string) (*Pod, error) {
 	key, err := wgtypes.GeneratePrivateKey()
 	if err != nil {
 		return nil, err
@@ -26,21 +28,10 @@ func NewPod(client *Client, namespace, name string) (*Pod, error) {
 	return &Pod{
 		name:      name,
 		namespace: namespace,
+		addr:      addr,
 		key:       key,
 		client:    client,
 	}, nil
-}
-
-func CreatePod(ctx context.Context, client *Client, prefix, namespace string) (*Pod, error) {
-	res := resource(prefix, namespace)
-	pod, err := client.CoreV1().
-		Pods(namespace).
-		Create(ctx, res, metav1.CreateOptions{})
-	if err != nil {
-		return nil, err
-	}
-
-	return NewPod(client, namespace, pod.Name)
 }
 
 func (n *Pod) PublicKey() string {
@@ -61,48 +52,22 @@ func (p *Pod) InvokeCNI(ctx context.Context, command string, conf []byte) (strin
 	return p.Exec(ctx, InvokeCNI(command), bytes.NewReader(conf))
 }
 
-func (p *Pod) CniConfig(address string, listenPort int, peers []CNIPeer) ([]byte, error) {
-	return cniConf(p.key, address, listenPort, peers)
+func (p *Pod) CniConfig(listenPort int, peers []CNIPeer) ([]byte, error) {
+	return cniConf(p.key, p.addr+"/24", listenPort, peers)
 }
 
-func resource(prefix, namespace string) *corev1.Pod {
-	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: prefix,
-			Namespace:    namespace,
-		},
-		Spec: corev1.PodSpec{
-			RestartPolicy: corev1.RestartPolicyNever,
-			Volumes: []corev1.Volume{{
-				Name: "cni-bin",
-				VolumeSource: corev1.VolumeSource{
-					HostPath: &corev1.HostPathVolumeSource{
-						Path: "/opt/cni/bin",
-						Type: new(corev1.HostPathDirectory),
-					},
-				},
-			}},
-			Containers: []corev1.Container{{
-				Name:            "main",
-				Image:           "wireguard-cni-tools:latest",
-				ImagePullPolicy: corev1.PullIfNotPresent,
-				Command:         []string{"sleep", "3600"},
-				SecurityContext: &corev1.SecurityContext{
-					Privileged: new(true),
-					RunAsUser:  new(int64(0)),
-					Capabilities: &corev1.Capabilities{
-						Add: []corev1.Capability{
-							corev1.Capability("NET_ADMIN"),
-							corev1.Capability("SYS_MODULE"),
-						},
-					},
-				},
-				VolumeMounts: []corev1.VolumeMount{{
-					Name:      "cni-bin",
-					MountPath: "/opt/cni/bin",
-					ReadOnly:  true,
-				}},
-			}},
-		},
+func (p *Pod) ClientPeer() CNIPeer {
+	return CNIPeer{
+		PublicKey:  p.PublicKey(),
+		AllowedIPs: []string{p.addr + "/32"},
+	}
+}
+
+func (p *Pod) ServerPeer(podIp string, port int) CNIPeer {
+	return CNIPeer{
+		PublicKey:           p.PublicKey(),
+		AllowedIPs:          []string{p.addr + "/32"},
+		Endpoint:            fmt.Sprintf("%s:%d", podIp, port),
+		PersistentKeepalive: 5,
 	}
 }

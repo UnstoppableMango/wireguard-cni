@@ -11,8 +11,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/unstoppablemango/wireguard-cni/test/utils"
 
+	"github.com/unstoppablemango/wireguard-cni/test/utils"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -57,16 +57,14 @@ var _ = Describe("Kubernetes", Ordered, Label("k8s"), func() {
 			_ = c.CoreV1().Namespaces().Delete(ctx, created.Name, metav1.DeleteOptions{})
 		})
 
-		By("creating Node objects for server and client (generates WireGuard key pairs)")
-		client, err = utils.CreatePod(ctx, c, "wg-client-", created.Name)
+		By("creating server and client objects")
+		client, err = c.CreatePod(ctx, "wg-client-", created.Name, clientWgAddr)
 		Expect(err).NotTo(HaveOccurred())
-
-		server, err = utils.CreatePod(ctx, c, "wg-server-", created.Name)
+		server, err = c.CreatePod(ctx, "wg-server-", created.Name, serverWgAddr)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("waiting for server pod to reach Running phase")
 		waitForPodRunning(ctx, server)
-
 		By("waiting for client pod to reach Running phase")
 		waitForPodRunning(ctx, client)
 	})
@@ -79,17 +77,14 @@ var _ = Describe("Kubernetes", Ordered, Label("k8s"), func() {
 		Expect(serverPodIP).NotTo(BeEmpty())
 
 		By("building CNI configs for server and client")
-		serverConf, err = server.CniConfig(serverWgAddr+"/24", wgPort, []utils.CNIPeer{
-			{PublicKey: client.PublicKey(), AllowedIPs: []string{clientWgAddr + "/32"}},
+		serverConf, err = server.CniConfig(wgPort, []utils.CNIPeer{
+			client.ClientPeer(),
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		clientConf, err = client.CniConfig(clientWgAddr+"/24", 0, []utils.CNIPeer{{
-			PublicKey:           server.PublicKey(),
-			AllowedIPs:          []string{serverWgAddr + "/32"},
-			Endpoint:            fmt.Sprintf("%s:%d", serverPodIP, wgPort),
-			PersistentKeepalive: 5,
-		}})
+		clientConf, err = client.CniConfig(0, []utils.CNIPeer{
+			server.ServerPeer(serverPodIP, wgPort),
+		})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("invoking CNI ADD on server pod via wireguard-cni binary")

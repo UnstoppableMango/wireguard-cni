@@ -8,6 +8,7 @@ import (
 	"os"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -71,4 +72,58 @@ func (c *Client) Exec(ctx context.Context, pod, namespace string, cmd []string, 
 		Stderr: &stderr,
 	})
 	return stdout.String(), stderr.String(), err
+}
+
+func (c *Client) CreatePod(ctx context.Context, prefix, namespace, addr string) (*Pod, error) {
+	pod, err := c.CoreV1().Pods(namespace).Create(ctx,
+		resource(prefix, namespace),
+		metav1.CreateOptions{},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewPod(c, namespace, pod.Name, addr)
+}
+
+func resource(prefix, namespace string) *corev1.Pod {
+	return &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: prefix,
+			Namespace:    namespace,
+		},
+		Spec: corev1.PodSpec{
+			RestartPolicy: corev1.RestartPolicyNever,
+			Volumes: []corev1.Volume{{
+				Name: "cni-bin",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{
+						Path: "/opt/cni/bin",
+						Type: new(corev1.HostPathDirectory),
+					},
+				},
+			}},
+			Containers: []corev1.Container{{
+				Name:            "main",
+				Image:           "wireguard-cni-tools:latest",
+				ImagePullPolicy: corev1.PullIfNotPresent,
+				Command:         []string{"sleep", "3600"},
+				SecurityContext: &corev1.SecurityContext{
+					Privileged: new(true),
+					RunAsUser:  new(int64(0)),
+					Capabilities: &corev1.Capabilities{
+						Add: []corev1.Capability{
+							corev1.Capability("NET_ADMIN"),
+							corev1.Capability("SYS_MODULE"),
+						},
+					},
+				},
+				VolumeMounts: []corev1.VolumeMount{{
+					Name:      "cni-bin",
+					MountPath: "/opt/cni/bin",
+					ReadOnly:  true,
+				}},
+			}},
+		},
+	}
 }
