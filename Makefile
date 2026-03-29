@@ -38,7 +38,7 @@ test:
 test-unit:
 	./scripts/test.sh ./... -ginkgo.label-filter="!e2e"
 test-k8s:
-	./scripts/test.sh ./test/e2e -ginkgo.label-filter="k8s"
+	$(GINKGO) run --label-filter="k8s" ./test/e2e
 
 go.sum: go.mod ${GO_SRC}
 	$(GO) mod tidy

@@ -8,7 +8,6 @@ GOMODCACHE="$(go env GOMODCACHE)"
 mkdir -p "${GOMODCACHE}"
 
 root="$(git rev-parse --show-toplevel)"
-export KUBECONFIG="${KUBECONFIG:-${root}/.kube/config}"
 set -x
 
 podman run --rm --privileged \
