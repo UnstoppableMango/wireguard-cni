@@ -11,18 +11,18 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: cachix/install-nix-action@v31.10.3
+      - uses: cachix/install-nix-action@96951a368ba55167b55f1c916f7d416bac6505fe # v31.10.3
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: DeterminateSystems/magic-nix-cache-action@v13
+      - uses: DeterminateSystems/magic-nix-cache-action@565684385bcd71bad329742eefe8d12f2e765b39 # v13
 
       - run: make bin/wireguard-cni
 
       - if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: wireguard-cni
           path: bin/wireguard-cni
@@ -31,17 +31,17 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: cachix/install-nix-action@v31.10.3
+      - uses: cachix/install-nix-action@96951a368ba55167b55f1c916f7d416bac6505fe # v31.10.3
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: DeterminateSystems/magic-nix-cache-action@v13
+      - uses: DeterminateSystems/magic-nix-cache-action@565684385bcd71bad329742eefe8d12f2e765b39 # v13
 
       - run: make bin/wireguard-cni
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: wireguard-cni-arm
           path: bin/wireguard-cni
@@ -51,12 +51,12 @@ jobs:
     needs: [build, arm]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: wireguard-cni
           path: bin/amd64
 
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: wireguard-cni-arm
           path: bin/arm64
@@ -70,18 +70,18 @@ jobs:
           sha256sum dist/*.tar.gz > dist/checksums.txt
 
       - name: Create release
-        uses: softprops/action-gh-release@v2.6.1
+        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
         with:
           files: dist/*
 
   test:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: redhat-actions/podman-install@main
+      - uses: redhat-actions/podman-install@0b0ebeccb256851665136971d7782ba7180773df # main
 
-      - uses: actions/setup-go@v6.3.0
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
@@ -91,15 +91,15 @@ jobs:
   test-k8s:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: redhat-actions/podman-install@main
+      - uses: redhat-actions/podman-install@0b0ebeccb256851665136971d7782ba7180773df # main
 
-      - uses: cachix/install-nix-action@v31.10.3
+      - uses: cachix/install-nix-action@96951a368ba55167b55f1c916f7d416bac6505fe # v31.10.3
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: DeterminateSystems/magic-nix-cache-action@v13
+      - uses: DeterminateSystems/magic-nix-cache-action@565684385bcd71bad329742eefe8d12f2e765b39 # v13
 
       - run: sudo modprobe wireguard
       - run: nix develop -c make kind
@@ -112,26 +112,26 @@ jobs:
   check:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: cachix/install-nix-action@v31.10.3
+      - uses: cachix/install-nix-action@96951a368ba55167b55f1c916f7d416bac6505fe # v31.10.3
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: DeterminateSystems/magic-nix-cache-action@v13
+      - uses: DeterminateSystems/magic-nix-cache-action@565684385bcd71bad329742eefe8d12f2e765b39 # v13
 
       - run: make check
 
   clean:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: cachix/install-nix-action@v31.10.3
+      - uses: cachix/install-nix-action@96951a368ba55167b55f1c916f7d416bac6505fe # v31.10.3
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: DeterminateSystems/magic-nix-cache-action@v13
+      - uses: DeterminateSystems/magic-nix-cache-action@565684385bcd71bad329742eefe8d12f2e765b39 # v13
 
       - run: nix develop -c make gomod2nix.toml
       - run: git diff --exit-code
@@ -142,19 +142,19 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       # Install outside of Nix for runner deps
-      - uses: redhat-actions/podman-install@main
+      - uses: redhat-actions/podman-install@0b0ebeccb256851665136971d7782ba7180773df # main
 
-      - uses: cachix/install-nix-action@v31.10.3
+      - uses: cachix/install-nix-action@96951a368ba55167b55f1c916f7d416bac6505fe # v31.10.3
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: DeterminateSystems/magic-nix-cache-action@v13
+      - uses: DeterminateSystems/magic-nix-cache-action@565684385bcd71bad329742eefe8d12f2e765b39 # v13
 
       - id: meta
-        uses: docker/metadata-action@v6.0.0
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
         with:
           images: |
             ghcr.io/unstoppablemango/wireguard-cni
@@ -180,7 +180,7 @@ jobs:
 
       - name: Push to registry
         if: github.event_name == 'push'
-        uses: redhat-actions/push-to-registry@v2
+        uses: redhat-actions/push-to-registry@5ed88d269cf581ea9ef6dd6806d01562096bee9c # v2.8
         with:
           tags: ${{ steps.meta.outputs.tags }}
           username: ${{ github.repository_owner }}
