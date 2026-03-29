@@ -84,7 +84,7 @@ func newNetConf(privKey, peerPubKey wgtypes.Key, address, version string, prevRe
 
 var _ = Describe("Host interface configuration", func() {
 	for _, ver := range testutils.AllSpecVersions {
-		Describe(fmt.Sprintf("cni %s", ver), Ordered, func() {
+		Describe(fmt.Sprintf("cni %s", ver), Label(ver), Ordered, func() {
 			var (
 				testNS    ns.NetNS
 				privKey   wgtypes.Key
@@ -222,7 +222,7 @@ var _ = Describe("Host interface configuration", func() {
 
 var _ = Describe("Wireguard tunnel traffic", func() {
 	for _, ver := range testutils.AllSpecVersions {
-		Describe(fmt.Sprintf("cni %s", ver), Ordered, func() {
+		Describe(fmt.Sprintf("cni %s", ver), Label(ver), Ordered, func() {
 			var (
 				serverNS  ns.NetNS
 				clientNS  ns.NetNS
