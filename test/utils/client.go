@@ -22,6 +22,9 @@ type Client struct {
 
 func NewClient() (*Client, error) {
 	kubeconfig := os.Getenv("KUBECONFIG")
+	if kubeconfig == "" {
+		return nil, fmt.Errorf("KUBECONFIG environment variable is not set or is empty")
+	}
 	if _, err := os.Stat(kubeconfig); err != nil {
 		return nil, fmt.Errorf("kubeconfig not found at %s: %w", kubeconfig, err)
 	}
