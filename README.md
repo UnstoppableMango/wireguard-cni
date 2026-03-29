@@ -10,7 +10,7 @@ When invoked by the container runtime, the plugin:
 2. Assigns the configured IP address
 3. Configures peers and installs routes for each peer's `allowedIPs`
 
-The plugin must be the **first** (and typically only) plugin in the CNI chain — it errors if a `prevResult` is present.
+For the CNI `ADD` command, the plugin must be the **first** (and typically only) plugin in the CNI chain and must not receive a `prevResult`. For the CNI `CHECK` command, the plugin expects a valid `prevResult` from a prior `ADD` in the chain.
 
 ## Configuration
 
@@ -53,7 +53,7 @@ Each peer:
 | Field | Required | Description |
 |---|---|---|
 | `publicKey` | yes | Base64-encoded peer public key |
-| `allowedIPs` | yes | CIDR ranges routed through this peer |
+| `allowedIPs` | no | CIDR ranges routed through this peer |
 | `endpoint` | no | `host:port` of the peer |
 | `persistentKeepalive` | no | Keepalive interval in seconds |
 
