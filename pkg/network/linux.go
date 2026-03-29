@@ -71,6 +71,10 @@ func (l *netlinkLink) Name() string {
 	return l.link.Attrs().Name
 }
 
+func (l *netlinkLink) String() string {
+	return l.Name()
+}
+
 func (l *netlinkLink) AssignAddress(addr *net.IPNet) error {
 	return netlink.AddrAdd(l.link, &netlink.Addr{IPNet: addr})
 }

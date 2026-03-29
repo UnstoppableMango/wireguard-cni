@@ -227,28 +227,21 @@ var _ = Describe("Host interface configuration", func() {
 
 var _ = Describe("Isolated mode", Label("e2e"), func() {
 	for _, ver := range testutils.AllSpecVersions {
-		Describe(fmt.Sprintf("cni %s", ver), Label(ver), Ordered, func() {
-			var (
-				testNS  ns.NetNS
-				privKey wgtypes.Key
-				peerKey wgtypes.Key
-			)
-
-			BeforeAll(func() {
-				var err error
-				testNS, err = testutils.NewNS()
+		Describe(fmt.Sprintf("cni %s", ver), Label(ver), func() {
+			It("ADD with isolated:true and a prevResult returns an error", func() {
+				testNS, err := testutils.NewNS()
 				Expect(err).NotTo(HaveOccurred())
 				DeferCleanup(func() {
+					_ = cmd.Del(&skel.CmdArgs{Netns: testNS.Path(), IfName: "wg0"})
 					testNS.Close()
 					testutils.UnmountNS(testNS)
 				})
-				privKey, err = wgtypes.GeneratePrivateKey()
-				Expect(err).NotTo(HaveOccurred())
-				peerKey, err = wgtypes.GeneratePrivateKey()
-				Expect(err).NotTo(HaveOccurred())
-			})
 
-			It("ADD with isolated:true and a prevResult returns an error", func() {
+				privKey, err := wgtypes.GeneratePrivateKey()
+				Expect(err).NotTo(HaveOccurred())
+				peerKey, err := wgtypes.GeneratePrivateKey()
+				Expect(err).NotTo(HaveOccurred())
+
 				// First do an ADD to get a valid prevResult.
 				addArgs := &skel.CmdArgs{
 					ContainerID: "test-isolated",
@@ -277,6 +270,20 @@ var _ = Describe("Isolated mode", Label("e2e"), func() {
 			})
 
 			It("ADD with isolated:false (default) and a prevResult succeeds and returns merged result", func() {
+				testNS, err := testutils.NewNS()
+				Expect(err).NotTo(HaveOccurred())
+				DeferCleanup(func() {
+					_ = cmd.Del(&skel.CmdArgs{Netns: testNS.Path(), IfName: "wg0"})
+					_ = cmd.Del(&skel.CmdArgs{Netns: testNS.Path(), IfName: "wg1"})
+					testNS.Close()
+					testutils.UnmountNS(testNS)
+				})
+
+				privKey, err := wgtypes.GeneratePrivateKey()
+				Expect(err).NotTo(HaveOccurred())
+				peerKey, err := wgtypes.GeneratePrivateKey()
+				Expect(err).NotTo(HaveOccurred())
+
 				// First do an ADD to get a valid prevResult.
 				addArgs := &skel.CmdArgs{
 					ContainerID: "test-chained",

@@ -88,22 +88,25 @@ func (c *Config) MergedResult(args *skel.CmdArgs) (*current.Result, error) {
 		return nil, fmt.Errorf("invalid address %q: %v", c.Address, err)
 	}
 
-	idx := len(prev.Interfaces)
 	prev.Interfaces = append(prev.Interfaces, &current.Interface{
 		Name:    args.IfName,
 		Sandbox: args.Netns,
 	})
 	prev.IPs = append(prev.IPs, &current.IPConfig{
-		Interface: &idx,
+		Interface: new(len(prev.Interfaces)),
 		Address:   net.IPNet{IP: ip, Mask: ipnet.Mask},
 	})
 	return prev, nil
 }
 
 func (c *Config) PrintResult(args *skel.CmdArgs) error {
-	result, err := c.MergedResult(args)
+	return PrintResult(c, args)
+}
+
+func PrintResult(config *Config, args *skel.CmdArgs) error {
+	result, err := config.MergedResult(args)
 	if err != nil {
 		return err
 	}
-	return types.PrintResult(result, c.CNIVersion)
+	return types.PrintResult(result, config.CNIVersion)
 }
