@@ -6,8 +6,10 @@ KIND      ?= kind
 KUBECTL   ?= kubectl
 SKOPEO    ?= skopeo
 
-VERSION    ?= v0.0.1-alpha
-IMAGE      ?= localhost/wireguard-cni
+VERSION     ?= v0.0.1-alpha
+IMAGE       ?= localhost/wireguard-cni
+CNI_VERSION ?= 1.0.0
+
 GOVERSION  ?= $(shell $(GO) env GOVERSION | sed 's/go//')
 GOMODCACHE ?= $(shell $(GO) env GOMODCACHE)
 
@@ -32,20 +34,11 @@ check:
 
 .PHONY: test test-unit test-k8s
 test:
-	@mkdir -p ${GOMODCACHE}
-	$(PODMAN) run --rm \
-		--privileged \
-		-v "${CURDIR}:/src" \
-		-v "${GOMODCACHE}:/go/pkg/mod" \
-		-w /src \
-		golang:$(GOVERSION) \
-		go test -v ./... -ginkgo.label-filter="!k8s"
-
+	./scripts/test.sh ./... -ginkgo.label-filter="!k8s"
 test-unit:
-	$(GINKGO) run -r --label-filter="!e2e"
-
+	./scripts/test.sh ./... -ginkgo.label-filter="!e2e"
 test-k8s:
-	$(GINKGO) run -r --label-filter="k8s" ./test/e2e
+	./scripts/test.sh ./test/e2e -ginkgo.label-filter="k8s"
 
 go.sum: go.mod ${GO_SRC}
 	$(GO) mod tidy
