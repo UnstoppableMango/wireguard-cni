@@ -3,7 +3,9 @@
 package network
 
 import (
+	"errors"
 	"net"
+	"syscall"
 
 	"github.com/vishvananda/netlink"
 )
@@ -71,6 +73,10 @@ func (l *netlinkLink) Name() string {
 	return l.link.Attrs().Name
 }
 
+func (l *netlinkLink) String() string {
+	return l.Name()
+}
+
 func (l *netlinkLink) AssignAddress(addr *net.IPNet) error {
 	return netlink.AddrAdd(l.link, &netlink.Addr{IPNet: addr})
 }
@@ -80,10 +86,14 @@ func (l *netlinkLink) BringUp() error {
 }
 
 func (l *netlinkLink) AddRoute(dst *net.IPNet) error {
-	return netlink.RouteAdd(&netlink.Route{
+	err := netlink.RouteAdd(&netlink.Route{
 		LinkIndex: l.link.Attrs().Index,
 		Dst:       dst,
 	})
+	if errors.Is(err, syscall.EEXIST) {
+		return nil
+	}
+	return err
 }
 
 func (l *netlinkLink) Addresses() ([]*net.IPNet, error) {

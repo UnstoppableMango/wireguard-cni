@@ -64,12 +64,17 @@ func addDefaultRouteInNS(targetNS ns.NetNS, gateway, viaIface string) {
 // newNetConf builds a CNI ADD config for the wireguard-cni plugin. Pass a
 // non-nil prevResult to produce a config suitable for CNI CHECK.
 func newNetConf(privKey, peerPubKey wgtypes.Key, address, version string, prevResult []byte) []byte {
+	return newNetConfFull(privKey, peerPubKey, address, version, prevResult, false)
+}
+
+func newNetConfFull(privKey, peerPubKey wgtypes.Key, address, version string, prevResult []byte, isolated bool) []byte {
 	conf := map[string]any{
 		"cniVersion": version,
 		"name":       "wg-test",
 		"type":       "wireguard-cni",
 		"address":    address,
 		"privateKey": privKey.String(),
+		"isolated":   isolated,
 		"peers": []map[string]any{{
 			"publicKey":  peerPubKey.String(),
 			"allowedIPs": []string{"10.0.0.0/8"},
@@ -215,6 +220,104 @@ var _ = Describe("Host interface configuration", func() {
 				Expect(testutils.CmdDelWithArgs(args, func() error {
 					return cmd.Del(args)
 				})).To(Succeed())
+			})
+		})
+	}
+})
+
+var _ = Describe("Isolated mode", Label("e2e"), func() {
+	for _, ver := range testutils.AllSpecVersions {
+		// CNI 0.1.0 and 0.2.0 predate chained mode; their result type has no
+		// Interfaces field, so prevResult-based tests don't apply.
+		if ver == "0.1.0" || ver == "0.2.0" {
+			continue
+		}
+		Describe(fmt.Sprintf("cni %s", ver), Label(ver), func() {
+			It("ADD with isolated:true and a prevResult returns an error", func() {
+				testNS, err := testutils.NewNS()
+				Expect(err).NotTo(HaveOccurred())
+				DeferCleanup(func() {
+					_ = cmd.Del(&skel.CmdArgs{Netns: testNS.Path(), IfName: "wg0"})
+					testNS.Close()
+					testutils.UnmountNS(testNS)
+				})
+
+				privKey, err := wgtypes.GeneratePrivateKey()
+				Expect(err).NotTo(HaveOccurred())
+				peerKey, err := wgtypes.GeneratePrivateKey()
+				Expect(err).NotTo(HaveOccurred())
+
+				// First do an ADD to get a valid prevResult.
+				addArgs := &skel.CmdArgs{
+					ContainerID: "test-isolated",
+					Netns:       testNS.Path(),
+					IfName:      "wg0",
+					Path:        "/opt/cni/bin",
+					StdinData:   newNetConf(privKey, peerKey.PublicKey(), "10.101.0.2/24", ver, nil),
+				}
+				_, prevResult, err := testutils.CmdAddWithArgs(addArgs, func() error {
+					return cmd.Add(addArgs)
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				// Now attempt ADD with isolated:true and a non-nil prevResult.
+				isolatedArgs := &skel.CmdArgs{
+					ContainerID: "test-isolated",
+					Netns:       testNS.Path(),
+					IfName:      "wg1",
+					Path:        "/opt/cni/bin",
+					StdinData:   newNetConfFull(privKey, peerKey.PublicKey(), "10.101.1.2/24", ver, prevResult, true),
+				}
+				_, _, err = testutils.CmdAddWithArgs(isolatedArgs, func() error {
+					return cmd.Add(isolatedArgs)
+				})
+				Expect(err).To(MatchError(ContainSubstring("isolated mode does not accept a prevResult")))
+			})
+
+			It("ADD with isolated:false (default) and a prevResult succeeds and returns merged result", func() {
+				testNS, err := testutils.NewNS()
+				Expect(err).NotTo(HaveOccurred())
+				DeferCleanup(func() {
+					_ = cmd.Del(&skel.CmdArgs{Netns: testNS.Path(), IfName: "wg0"})
+					_ = cmd.Del(&skel.CmdArgs{Netns: testNS.Path(), IfName: "wg1"})
+					testNS.Close()
+					testutils.UnmountNS(testNS)
+				})
+
+				privKey, err := wgtypes.GeneratePrivateKey()
+				Expect(err).NotTo(HaveOccurred())
+				peerKey, err := wgtypes.GeneratePrivateKey()
+				Expect(err).NotTo(HaveOccurred())
+
+				// First do an ADD to get a valid prevResult.
+				addArgs := &skel.CmdArgs{
+					ContainerID: "test-chained",
+					Netns:       testNS.Path(),
+					IfName:      "wg0",
+					Path:        "/opt/cni/bin",
+					StdinData:   newNetConf(privKey, peerKey.PublicKey(), "10.102.0.2/24", ver, nil),
+				}
+				_, prevResult, err := testutils.CmdAddWithArgs(addArgs, func() error {
+					return cmd.Add(addArgs)
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				// Attempt ADD in chained mode with the prior result as prevResult.
+				chainedArgs := &skel.CmdArgs{
+					ContainerID: "test-chained",
+					Netns:       testNS.Path(),
+					IfName:      "wg1",
+					Path:        "/opt/cni/bin",
+					StdinData:   newNetConfFull(privKey, peerKey.PublicKey(), "10.102.1.2/24", ver, prevResult, false),
+				}
+				_, chainedResult, err := testutils.CmdAddWithArgs(chainedArgs, func() error {
+					return cmd.Add(chainedArgs)
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				// The merged result JSON should contain both interfaces.
+				Expect(string(chainedResult)).To(ContainSubstring("wg0"))
+				Expect(string(chainedResult)).To(ContainSubstring("wg1"))
 			})
 		})
 	}

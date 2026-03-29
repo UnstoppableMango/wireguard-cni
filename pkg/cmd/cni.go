@@ -10,8 +10,9 @@ import (
 const Name = "wireguard-cni"
 
 var (
-	ErrFirstPlugin = fmt.Errorf("%s must be called as the first plugin", Name)
-	ErrPrevResult  = fmt.Errorf("%s requires a prevResult", Name)
+	ErrIsolated       = fmt.Errorf("%s: isolated mode does not accept a prevResult", Name)
+	ErrPrevResult     = fmt.Errorf("%s: CHECK requires a prevResult from a prior ADD", Name)
+	ErrChainedVersion = fmt.Errorf("%s: chained mode requires CNI spec >= 0.3.0", Name)
 )
 
 func logger(args *skel.CmdArgs) *zap.Logger {
