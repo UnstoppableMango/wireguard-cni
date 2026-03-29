@@ -4,6 +4,7 @@ package e2e_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -199,3 +200,13 @@ var _ = Describe("Kubernetes", Ordered, Label("k8s"), func() {
 		Expect(err).To(HaveOccurred(), "expected wg0 to be absent after CNI DEL")
 	})
 })
+
+// withPrevResult embeds a CNI ADD result as prevResult for use in CHECK calls.
+func withPrevResult(conf, prevResult []byte) ([]byte, error) {
+	var m map[string]any
+	if err := json.Unmarshal(conf, &m); err != nil {
+		return nil, err
+	}
+	m["prevResult"] = json.RawMessage(prevResult)
+	return json.Marshal(m)
+}
