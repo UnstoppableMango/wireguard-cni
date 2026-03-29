@@ -37,10 +37,10 @@ type Config struct {
 func Parse(stdin []byte) (*Config, error) {
 	var conf Config
 	if err := json.Unmarshal(stdin, &conf); err != nil {
-		return nil, fmt.Errorf("failed to parse network configuration: %v", err)
+		return nil, fmt.Errorf("failed to parse network configuration: %w", err)
 	}
 	if err := version.ParsePrevResult(&conf.PluginConf); err != nil {
-		return nil, fmt.Errorf("failed to parse prevResult: %v", err)
+		return nil, fmt.Errorf("failed to parse prevResult: %w", err)
 	}
 
 	return &conf, nil
@@ -51,7 +51,7 @@ func Parse(stdin []byte) (*Config, error) {
 func (c *Config) Result(args *skel.CmdArgs) (*current.Result, error) {
 	ip, ipnet, err := net.ParseCIDR(c.Address)
 	if err != nil {
-		return nil, fmt.Errorf("invalid address %q: %v", c.Address, err)
+		return nil, fmt.Errorf("invalid address %q: %w", c.Address, err)
 	}
 
 	return &current.Result{

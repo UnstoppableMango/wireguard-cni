@@ -35,11 +35,11 @@ func (c *Config) Wireguard() (*net.IPNet, *wgtypes.Config, error) {
 	}
 
 	for i, p := range c.Peers {
-		if pc, err := peerConfig(p); err != nil {
+		pc, err := peerConfig(p)
+		if err != nil {
 			return nil, nil, fmt.Errorf("peer %d: %w", i, err)
-		} else {
-			wg.Peers = append(wg.Peers, *pc)
 		}
+		wg.Peers = append(wg.Peers, *pc)
 	}
 
 	return addr, &wg, nil
@@ -60,19 +60,19 @@ func peerConfig(c PeerConfig) (*wgtypes.PeerConfig, error) {
 	}
 
 	for _, ip := range c.AllowedIPs {
-		if _, ipnet, err := net.ParseCIDR(ip); err != nil {
+		_, ipnet, err := net.ParseCIDR(ip)
+		if err != nil {
 			return nil, fmt.Errorf("invalid allowedIP %q: %w", ip, err)
-		} else {
-			pc.AllowedIPs = append(pc.AllowedIPs, *ipnet)
 		}
+		pc.AllowedIPs = append(pc.AllowedIPs, *ipnet)
 	}
 
 	if c.Endpoint != "" {
-		if addr, err := c.ResolveUDPAddr(); err != nil {
+		addr, err := c.ResolveUDPAddr()
+		if err != nil {
 			return nil, err
-		} else {
-			pc.Endpoint = addr
 		}
+		pc.Endpoint = addr
 	}
 
 	if c.PersistentKeepalive > 0 {
