@@ -9,12 +9,12 @@ import (
 )
 
 func (c *Config) Wireguard() (*net.IPNet, *wgtypes.Config, error) {
-	if c.Address == "" {
-		return nil, nil, fmt.Errorf("address is required")
+	if len(c.RuntimeConfig.IPs) == 0 {
+		return nil, nil, fmt.Errorf("runtimeConfig.ips is required")
 	}
-	ip, addr, err := net.ParseCIDR(c.Address)
+	ip, addr, err := net.ParseCIDR(c.RuntimeConfig.IPs[0])
 	if err != nil {
-		return nil, nil, fmt.Errorf("invalid address: %w", err)
+		return nil, nil, fmt.Errorf("invalid runtimeConfig.ips[0]: %w", err)
 	}
 	addr.IP = ip
 

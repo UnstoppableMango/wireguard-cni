@@ -27,7 +27,9 @@ func (c *PeerConfig) ResolveUDPAddr() (*net.UDPAddr, error) {
 
 type Config struct {
 	types.PluginConf
-	Address    string       `json:"address"`
+	RuntimeConfig struct {
+		IPs []string `json:"ips,omitempty"`
+	} `json:"runtimeConfig,omitempty"`
 	PrivateKey string       `json:"privateKey"`
 	ListenPort int          `json:"listenPort,omitempty"`
 	Peers      []PeerConfig `json:"peers"`
@@ -42,15 +44,19 @@ func Parse(stdin []byte) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse prevResult: %w", err)
 	}
 
+	if len(conf.RuntimeConfig.IPs) == 0 {
+		return nil, fmt.Errorf("runtimeConfig.ips is required but was not provided")
+	}
+
 	return &conf, nil
 }
 
 // Result constructs the CNI result for a WireGuard interface.
 // WireGuard uses AllowedIPs for routing so no gateway is set.
 func (c *Config) Result(args *skel.CmdArgs) (*current.Result, error) {
-	ip, ipnet, err := net.ParseCIDR(c.Address)
+	ip, ipnet, err := net.ParseCIDR(c.RuntimeConfig.IPs[0])
 	if err != nil {
-		return nil, fmt.Errorf("invalid address %q: %w", c.Address, err)
+		return nil, fmt.Errorf("invalid address %q: %w", c.RuntimeConfig.IPs[0], err)
 	}
 
 	return &current.Result{
@@ -82,9 +88,9 @@ func (c *Config) MergedResult(args *skel.CmdArgs) (*current.Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert prevResult: %w", err)
 	}
-	ip, ipnet, err := net.ParseCIDR(c.Address)
+	ip, ipnet, err := net.ParseCIDR(c.RuntimeConfig.IPs[0])
 	if err != nil {
-		return nil, fmt.Errorf("invalid address %q: %w", c.Address, err)
+		return nil, fmt.Errorf("invalid address %q: %w", c.RuntimeConfig.IPs[0], err)
 	}
 
 	idx := len(prev.Interfaces)
