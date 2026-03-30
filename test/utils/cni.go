@@ -46,7 +46,9 @@ func cniConf(key wgtypes.Key, address, version string, listenPort int, peers []C
 		"cniVersion": version,
 		"name":       "wg-k8s-e2e",
 		"type":       "wireguard-cni",
-		"address":    address,
+		"runtimeConfig": map[string]any{
+			"ips": []string{address},
+		},
 		"privateKey": key.String(),
 		"peers":      peers,
 	}

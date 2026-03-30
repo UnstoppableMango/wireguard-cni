@@ -19,7 +19,9 @@ func newNetConfWithPrevResult(privKey, peerPubKey, address string, prevResult []
 		"cniVersion": "1.0.0",
 		"name":       "wg-test",
 		"type":       "wireguard-cni",
-		"address":    address,
+		"runtimeConfig": map[string]any{
+			"ips": []string{address},
+		},
 		"privateKey": privKey,
 		"peers": []map[string]any{
 			{
@@ -35,18 +37,24 @@ func newNetConfWithPrevResult(privKey, peerPubKey, address string, prevResult []
 	return b
 }
 
+func configWithIPs(ips ...string) *config.Config {
+	c := &config.Config{}
+	c.RuntimeConfig.IPs = ips
+	return c
+}
+
 var _ = Describe("Wireguard", func() {
-	It("validates required address", func() {
+	It("validates required runtimeConfig.ips", func() {
 		key, err := wgtypes.GeneratePrivateKey()
 		Expect(err).NotTo(HaveOccurred())
 		conf := &config.Config{PrivateKey: key.String()}
 
 		_, _, err = conf.Wireguard()
-		Expect(err).To(MatchError(ContainSubstring("address is required")))
+		Expect(err).To(MatchError(ContainSubstring("runtimeConfig.ips is required")))
 	})
 
 	It("validates required privateKey", func() {
-		conf := &config.Config{Address: "10.0.0.1/24"}
+		conf := configWithIPs("10.0.0.1/24")
 		_, _, err := conf.Wireguard()
 		Expect(err).To(MatchError(ContainSubstring("privateKey is required")))
 	})
@@ -54,13 +62,11 @@ var _ = Describe("Wireguard", func() {
 	It("validates peer publicKey", func() {
 		key, err := wgtypes.GeneratePrivateKey()
 		Expect(err).NotTo(HaveOccurred())
-		conf := &config.Config{
-			Address:    "10.0.0.1/24",
-			PrivateKey: key.String(),
-			Peers: []config.PeerConfig{{
-				AllowedIPs: []string{"0.0.0.0/0"},
-			}},
-		}
+		conf := configWithIPs("10.0.0.1/24")
+		conf.PrivateKey = key.String()
+		conf.Peers = []config.PeerConfig{{
+			AllowedIPs: []string{"0.0.0.0/0"},
+		}}
 
 		_, _, err = conf.Wireguard()
 		Expect(err).To(MatchError(ContainSubstring("publicKey is required")))
@@ -69,12 +75,21 @@ var _ = Describe("Wireguard", func() {
 	It("validates invalid address CIDR", func() {
 		key, err := wgtypes.GeneratePrivateKey()
 		Expect(err).NotTo(HaveOccurred())
-		conf := &config.Config{
-			Address:    "not-a-cidr",
-			PrivateKey: key.String(),
-		}
+		conf := configWithIPs("not-a-cidr")
+		conf.PrivateKey = key.String()
 
 		_, _, err = conf.Wireguard()
-		Expect(err).To(MatchError(ContainSubstring("invalid address")))
+		Expect(err).To(MatchError(ContainSubstring("invalid runtimeConfig.ips[0]")))
+	})
+
+	It("uses only the first IP when multiple are provided", func() {
+		key, err := wgtypes.GeneratePrivateKey()
+		Expect(err).NotTo(HaveOccurred())
+		conf := configWithIPs("10.0.0.1/24", "10.0.0.2/24")
+		conf.PrivateKey = key.String()
+
+		addr, _, err := conf.Wireguard()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(addr.IP.String()).To(Equal("10.0.0.1"))
 	})
 })

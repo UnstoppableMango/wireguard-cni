@@ -68,7 +68,9 @@ func newNetConf(privKey, peerPubKey wgtypes.Key, address, version string, prevRe
 		"cniVersion": version,
 		"name":       "wg-test",
 		"type":       "wireguard-cni",
-		"address":    address,
+		"runtimeConfig": map[string]any{
+			"ips": []string{address},
+		},
 		"privateKey": privKey.String(),
 		"peers": []map[string]any{{
 			"publicKey":  peerPubKey.String(),
@@ -365,7 +367,9 @@ var _ = Describe("Wireguard tunnel traffic", func() {
 					"cniVersion": ver,
 					"name":       "wg-e2e",
 					"type":       "wireguard-cni",
-					"address":    "10.99.0.2/24",
+					"runtimeConfig": map[string]any{
+						"ips": []string{"10.99.0.2/24"},
+					},
 					"privateKey": clientKey.String(),
 					"peers": []map[string]any{{
 						"publicKey":           serverKey.PublicKey().String(),
