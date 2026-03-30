@@ -86,7 +86,7 @@ var _ = Describe("MergedResult", func() {
 	It("with nil PrevResult returns the same result as Result()", func() {
 		conf := configWithIPs("10.100.0.2/24")
 
-		merged, err := conf.MergedResult(args)
+		merged, err := conf.Result(args)
 		standalone, err2 := conf.Result(args)
 
 		Expect(err).NotTo(HaveOccurred())
@@ -101,7 +101,7 @@ var _ = Describe("MergedResult", func() {
 		conf, err := config.Parse(stdin)
 		Expect(err).NotTo(HaveOccurred())
 
-		result, err := conf.MergedResult(args)
+		result, err := conf.Result(args)
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.Interfaces).To(HaveLen(2))
@@ -116,7 +116,7 @@ var _ = Describe("MergedResult", func() {
 		conf, err := config.Parse(stdin)
 		Expect(err).NotTo(HaveOccurred())
 
-		result, err := conf.MergedResult(args)
+		result, err := conf.Result(args)
 
 		Expect(err).NotTo(HaveOccurred())
 		wgIP := result.IPs[len(result.IPs)-1]
@@ -130,7 +130,7 @@ var _ = Describe("MergedResult", func() {
 		conf, err := config.Parse(stdin)
 		Expect(err).NotTo(HaveOccurred())
 
-		result, err := conf.MergedResult(args)
+		result, err := conf.Result(args)
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.Interfaces[0].Name).To(Equal("eth0"))
@@ -142,7 +142,7 @@ var _ = Describe("MergedResult", func() {
 		conf, err := config.Parse(stdin)
 		Expect(err).NotTo(HaveOccurred())
 
-		result, err := conf.MergedResult(args)
+		result, err := conf.Result(args)
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.IPs).To(HaveLen(2))
@@ -155,7 +155,7 @@ var _ = Describe("MergedResult", func() {
 		conf, err := config.Parse(stdin)
 		Expect(err).NotTo(HaveOccurred())
 
-		result, err := conf.MergedResult(args)
+		result, err := conf.Result(args)
 
 		Expect(err).NotTo(HaveOccurred())
 		wgIP := result.IPs[len(result.IPs)-1]
@@ -169,10 +169,10 @@ var _ = Describe("MergedResult", func() {
 		conf, err := config.Parse(stdin)
 		Expect(err).NotTo(HaveOccurred())
 
-		_, err = conf.MergedResult(args)
+		_, err = conf.Result(args)
 
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("invalid address"))
+		Expect(err.Error()).To(ContainSubstring("invalid CIDR address"))
 	})
 })
 
@@ -253,8 +253,9 @@ var _ = Describe("Result", func() {
 		result, err := conf.Result(args)
 
 		Expect(err).NotTo(HaveOccurred())
-		Expect(result.IPs).To(HaveLen(1))
+		Expect(result.IPs).To(HaveLen(2))
 		Expect(result.IPs[0].Address.IP.String()).To(Equal("10.0.0.1"))
+		Expect(result.IPs[1].Address.IP.String()).To(Equal("10.0.0.2"))
 	})
 
 	It("returns error when address is invalid", func() {
@@ -263,6 +264,6 @@ var _ = Describe("Result", func() {
 		_, err := conf.Result(args)
 
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("invalid address"))
+		Expect(err.Error()).To(ContainSubstring("invalid CIDR address"))
 	})
 })
