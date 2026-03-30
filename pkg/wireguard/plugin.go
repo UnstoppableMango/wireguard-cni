@@ -5,6 +5,7 @@ import (
 	"net"
 	"slices"
 
+	current "github.com/containernetworking/cni/pkg/types/100"
 	"github.com/unstoppablemango/wireguard-cni/pkg/config"
 	"github.com/unstoppablemango/wireguard-cni/pkg/network"
 	"go.uber.org/zap"
@@ -48,11 +49,12 @@ func Add(mgr network.LinkManager, conf *config.Config) error {
 	return nil
 }
 
-// Check verifies that the WireGuard interface exists, has the configured address,
-// and that the device public key matches the configured private key.
+// Check verifies that the WireGuard interface exists, that all IPs and routes
+// from prevResult are still present in the live network namespace, and that the
+// device public key matches the configured private key.
 // Must be called from within an ns.Do() closure.
-func Check(mgr network.LinkManager, conf *config.Config) error {
-	addr, wg, err := conf.Wireguard()
+func Check(mgr network.LinkManager, conf *config.Config, ifName string, prevResult *current.Result) error {
+	_, wg, err := conf.Wireguard()
 	if err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
@@ -61,15 +63,46 @@ func Check(mgr network.LinkManager, conf *config.Config) error {
 		return fmt.Errorf("check link: %w", err)
 	}
 
-	zap.L().Info("checking link address", zap.String("expected", addr.String()))
+	// Find our interface index in prevResult.
+	ifIdx := -1
+	for i, iface := range prevResult.Interfaces {
+		if iface.Name == ifName {
+			ifIdx = i
+			break
+		}
+	}
+
+	// Verify IPs from prevResult are assigned.
+	zap.L().Info("checking link addresses from prevResult")
 	addrs, err := link.Addresses()
 	if err != nil {
 		return fmt.Errorf("check link %s: %w", link, err)
 	}
-	if !slices.ContainsFunc(addrs, func(a *net.IPNet) bool {
-		return a.String() == addr.String()
-	}) {
-		return fmt.Errorf("check link %s: address %s not found", link, addr)
+	for _, ipConf := range prevResult.IPs {
+		if ipConf.Interface == nil || *ipConf.Interface != ifIdx {
+			continue
+		}
+		ip := ipConf.Address
+		if !slices.ContainsFunc(addrs, func(a *net.IPNet) bool {
+			return a.String() == ip.String()
+		}) {
+			return fmt.Errorf("check link %s: address %s not found", link, ip.String())
+		}
+	}
+
+	// Verify routes from prevResult are installed.
+	zap.L().Info("checking link routes from prevResult")
+	routes, err := link.Routes()
+	if err != nil {
+		return fmt.Errorf("check link %s: %w", link, err)
+	}
+	for _, route := range prevResult.Routes {
+		dst := route.Dst
+		if !slices.ContainsFunc(routes, func(r *net.IPNet) bool {
+			return r.String() == dst.String()
+		}) {
+			return fmt.Errorf("check link %s: route %s not found", link, dst.String())
+		}
 	}
 
 	zap.L().Info("checking link public key")

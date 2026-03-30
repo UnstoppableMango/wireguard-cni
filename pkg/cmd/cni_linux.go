@@ -7,6 +7,7 @@ import (
 
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/version"
+	current "github.com/containernetworking/cni/pkg/types/100"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/unstoppablemango/wireguard-cni/pkg/config"
 	"github.com/unstoppablemango/wireguard-cni/pkg/network"
@@ -55,7 +56,12 @@ func Check(args *skel.CmdArgs) error {
 		return ErrPrevResult
 	}
 
+	prev, err := current.GetResult(conf.PrevResult)
+	if err != nil {
+		return err
+	}
+
 	return ns.WithNetNSPath(args.Netns, func(ns.NetNS) error {
-		return wireguard.Check(network.New(args.IfName), conf)
+		return wireguard.Check(network.New(args.IfName), conf, args.IfName, prev)
 	})
 }

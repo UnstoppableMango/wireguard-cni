@@ -7,6 +7,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	cnitypes "github.com/containernetworking/cni/pkg/types"
+	current "github.com/containernetworking/cni/pkg/types/100"
 	"github.com/unstoppablemango/wireguard-cni/pkg/config"
 	"github.com/unstoppablemango/wireguard-cni/pkg/wireguard"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -265,7 +267,27 @@ var _ = Describe("Add", func() {
 	})
 })
 
+// newTestPrevResult builds a minimal prevResult with the given interface name and address.
+func newTestPrevResult(ifName, cidr string) *current.Result {
+	ip, ipnet, _ := net.ParseCIDR(cidr)
+	ifIdx := 0
+	return &current.Result{
+		CNIVersion: "1.0.0",
+		Interfaces: []*current.Interface{
+			{Name: ifName, Sandbox: "/var/run/netns/test"},
+		},
+		IPs: []*current.IPConfig{
+			{
+				Interface: &ifIdx,
+				Address:   net.IPNet{IP: ip, Mask: ipnet.Mask},
+			},
+		},
+	}
+}
+
 var _ = Describe("Check", func() {
+	const ifName = "wg0"
+
 	It("succeeds when address and public key match", func() {
 		conf, privKey := newTestConfig()
 		_, addr, _ := net.ParseCIDR(conf.RuntimeConfig.IPs[0])
@@ -276,16 +298,18 @@ var _ = Describe("Check", func() {
 			publicKey: privKey.PublicKey(),
 		}
 		mgr := &fakeLinkManager{getLink: link}
+		prevResult := newTestPrevResult(ifName, conf.Address)
 
-		err := wireguard.Check(mgr, conf)
+		err := wireguard.Check(mgr, conf, ifName, prevResult)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("returns error when config is invalid", func() {
 		conf := &config.Config{}
 		mgr := &fakeLinkManager{}
+		prevResult := &current.Result{}
 
-		err := wireguard.Check(mgr, conf)
+		err := wireguard.Check(mgr, conf, ifName, prevResult)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("invalid configuration"))
 	})
@@ -293,8 +317,9 @@ var _ = Describe("Check", func() {
 	It("returns error when Get fails", func() {
 		conf, _ := newTestConfig()
 		mgr := &fakeLinkManager{getErr: errors.New("get failed")}
+		prevResult := newTestPrevResult(ifName, conf.Address)
 
-		err := wireguard.Check(mgr, conf)
+		err := wireguard.Check(mgr, conf, ifName, prevResult)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("check"))
 	})
@@ -303,20 +328,105 @@ var _ = Describe("Check", func() {
 		conf, _ := newTestConfig()
 		link := &fakeLink{addressesErr: errors.New("addr error")}
 		mgr := &fakeLinkManager{getLink: link}
+		prevResult := newTestPrevResult(ifName, conf.Address)
 
-		err := wireguard.Check(mgr, conf)
+		err := wireguard.Check(mgr, conf, ifName, prevResult)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("check"))
 	})
 
-	It("returns error when address is not found on the link", func() {
+	It("returns error when IP from prevResult is not assigned on the link", func() {
 		conf, _ := newTestConfig()
 		link := &fakeLink{addresses: []*net.IPNet{}}
 		mgr := &fakeLinkManager{getLink: link}
+		prevResult := newTestPrevResult(ifName, conf.Address)
 
-		err := wireguard.Check(mgr, conf)
+		err := wireguard.Check(mgr, conf, ifName, prevResult)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("not found"))
+	})
+
+	It("returns error when Routes fails", func() {
+		conf, privKey := newTestConfig()
+		_, addr, _ := net.ParseCIDR(conf.Address)
+		ip, _, _ := net.ParseCIDR(conf.Address)
+		addr.IP = ip
+		link := &fakeLink{
+			addresses: []*net.IPNet{addr},
+			routesErr: errors.New("routes error"),
+			publicKey: privKey.PublicKey(),
+		}
+		mgr := &fakeLinkManager{getLink: link}
+		_, routeDst, _ := net.ParseCIDR("10.1.0.0/24")
+		ifIdx := 0
+		prevResult := &current.Result{
+			CNIVersion: "1.0.0",
+			Interfaces: []*current.Interface{{Name: ifName}},
+			IPs: []*current.IPConfig{{
+				Interface: &ifIdx,
+				Address:   net.IPNet{IP: addr.IP, Mask: addr.Mask},
+			}},
+			Routes: []*cnitypes.Route{{Dst: *routeDst}},
+		}
+
+		err := wireguard.Check(mgr, conf, ifName, prevResult)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("check"))
+	})
+
+	It("returns error when route from prevResult is not installed", func() {
+		conf, privKey := newTestConfig()
+		_, addr, _ := net.ParseCIDR(conf.Address)
+		ip, _, _ := net.ParseCIDR(conf.Address)
+		addr.IP = ip
+		link := &fakeLink{
+			addresses: []*net.IPNet{addr},
+			routes:    []*net.IPNet{},
+			publicKey: privKey.PublicKey(),
+		}
+		mgr := &fakeLinkManager{getLink: link}
+		_, routeDst, _ := net.ParseCIDR("10.1.0.0/24")
+		ifIdx := 0
+		prevResult := &current.Result{
+			CNIVersion: "1.0.0",
+			Interfaces: []*current.Interface{{Name: ifName}},
+			IPs: []*current.IPConfig{{
+				Interface: &ifIdx,
+				Address:   net.IPNet{IP: addr.IP, Mask: addr.Mask},
+			}},
+			Routes: []*cnitypes.Route{{Dst: *routeDst}},
+		}
+
+		err := wireguard.Check(mgr, conf, ifName, prevResult)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("not found"))
+	})
+
+	It("succeeds when all IPs and routes from prevResult are present", func() {
+		conf, privKey := newTestConfig()
+		_, addr, _ := net.ParseCIDR(conf.Address)
+		ip, _, _ := net.ParseCIDR(conf.Address)
+		addr.IP = ip
+		_, routeDst, _ := net.ParseCIDR("10.1.0.0/24")
+		link := &fakeLink{
+			addresses: []*net.IPNet{addr},
+			routes:    []*net.IPNet{routeDst},
+			publicKey: privKey.PublicKey(),
+		}
+		mgr := &fakeLinkManager{getLink: link}
+		ifIdx := 0
+		prevResult := &current.Result{
+			CNIVersion: "1.0.0",
+			Interfaces: []*current.Interface{{Name: ifName}},
+			IPs: []*current.IPConfig{{
+				Interface: &ifIdx,
+				Address:   net.IPNet{IP: addr.IP, Mask: addr.Mask},
+			}},
+			Routes: []*cnitypes.Route{{Dst: *routeDst}},
+		}
+
+		err := wireguard.Check(mgr, conf, ifName, prevResult)
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("returns error when PublicKey fails", func() {
@@ -329,8 +439,9 @@ var _ = Describe("Check", func() {
 			publicKeyErr: errors.New("pubkey error"),
 		}
 		mgr := &fakeLinkManager{getLink: link}
+		prevResult := newTestPrevResult(ifName, conf.Address)
 
-		err := wireguard.Check(mgr, conf)
+		err := wireguard.Check(mgr, conf, ifName, prevResult)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("check"))
 	})
@@ -346,8 +457,9 @@ var _ = Describe("Check", func() {
 			publicKey: wrongKey.PublicKey(),
 		}
 		mgr := &fakeLinkManager{getLink: link}
+		prevResult := newTestPrevResult(ifName, conf.Address)
 
-		err := wireguard.Check(mgr, conf)
+		err := wireguard.Check(mgr, conf, ifName, prevResult)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("public key mismatch"))
 	})
