@@ -71,13 +71,13 @@ var _ = Describe("Add", func() {
 
 	It("skips AssignAddress when reconfiguring and address already present", func() {
 		conf, _ := newTestConfig()
-		_, addr, _ := net.ParseCIDR(conf.Address)
-		ip, _, _ := net.ParseCIDR(conf.Address)
+		ip, addr, err := net.ParseCIDR(conf.RuntimeConfig.IPs[0])
+		Expect(err).NotTo(HaveOccurred())
 		addr.IP = ip
 		link := &fakeLink{addresses: []*net.IPNet{addr}}
 		mgr := &fakeLinkManager{getLink: link}
 
-		err := wireguard.Add(mgr, conf)
+		err = wireguard.Add(mgr, conf)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(link.assignCalled).To(BeFalse())
 	})
@@ -178,9 +178,12 @@ var _ = Describe("Add", func() {
 	})
 
 	It("adds routes for all peers and CIDRs during create path", func() {
-		privKey, _ := wgtypes.GeneratePrivateKey()
-		peer1Key, _ := wgtypes.GeneratePrivateKey()
-		peer2Key, _ := wgtypes.GeneratePrivateKey()
+		privKey, err := wgtypes.GeneratePrivateKey()
+		Expect(err).NotTo(HaveOccurred())
+		peer1Key, err := wgtypes.GeneratePrivateKey()
+		Expect(err).NotTo(HaveOccurred())
+		peer2Key, err := wgtypes.GeneratePrivateKey()
+		Expect(err).NotTo(HaveOccurred())
 		conf := &config.Config{
 			PrivateKey: privKey.String(),
 			Peers: []config.PeerConfig{
@@ -201,17 +204,19 @@ var _ = Describe("Add", func() {
 			createLink: link,
 		}
 
-		err := wireguard.Add(mgr, conf)
+		err = wireguard.Add(mgr, conf)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(link.addedRoutes).To(HaveLen(4))
 	})
 
 	It("adds routes for all peers and CIDRs during reconfigure path", func() {
-		privKey, _ := wgtypes.GeneratePrivateKey()
-		peer1Key, _ := wgtypes.GeneratePrivateKey()
-		peer2Key, _ := wgtypes.GeneratePrivateKey()
+		privKey, err := wgtypes.GeneratePrivateKey()
+		Expect(err).NotTo(HaveOccurred())
+		peer1Key, err := wgtypes.GeneratePrivateKey()
+		Expect(err).NotTo(HaveOccurred())
+		peer2Key, err := wgtypes.GeneratePrivateKey()
+		Expect(err).NotTo(HaveOccurred())
 		conf := &config.Config{
-			Address:    "10.0.0.1/24",
 			PrivateKey: privKey.String(),
 			Peers: []config.PeerConfig{
 				{
@@ -224,10 +229,11 @@ var _ = Describe("Add", func() {
 				},
 			},
 		}
+		conf.RuntimeConfig.IPs = []string{"10.0.0.1/24"}
 		link := &fakeLink{}
 		mgr := &fakeLinkManager{getLink: link}
 
-		err := wireguard.Add(mgr, conf)
+		err = wireguard.Add(mgr, conf)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(link.addedRoutes).To(HaveLen(4))
 	})

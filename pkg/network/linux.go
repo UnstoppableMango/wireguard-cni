@@ -4,7 +4,6 @@ package network
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"syscall"
 
@@ -62,7 +61,7 @@ func (m netlinkManager) get() (netlink.Link, error) {
 func (m netlinkManager) Get() (Link, error) {
 	link, err := m.get()
 	if errors.As(err, &netlink.LinkNotFoundError{}) {
-		return nil, fmt.Errorf("%w: %w", ErrLinkNotFound, err)
+		return nil, errors.Join(ErrLinkNotFound, err)
 	}
 	if err != nil {
 		return nil, err
