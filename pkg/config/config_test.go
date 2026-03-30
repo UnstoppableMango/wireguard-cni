@@ -13,6 +13,25 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+func newNetConfWithRuntimeConfig(privKey, peerPubKey, address string, rc map[string]any) []byte {
+	conf := map[string]any{
+		"cniVersion": "1.0.0",
+		"name":       "wg-test",
+		"type":       "wireguard-cni",
+		"address":    address,
+		"privateKey": privKey,
+		"peers": []map[string]any{
+			{
+				"publicKey":  peerPubKey,
+				"allowedIPs": []string{"10.0.0.0/8"},
+			},
+		},
+		"runtimeConfig": rc,
+	}
+	b, _ := json.Marshal(conf)
+	return b
+}
+
 var _ = Describe("Config", func() {
 	It("parses a valid configuration", func() {
 		privKey, err := wgtypes.GeneratePrivateKey()
@@ -265,5 +284,84 @@ var _ = Describe("Result", func() {
 
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("invalid CIDR address"))
+	})
+})
+
+var _ = Describe("ParseMAC", func() {
+	It("returns nil when no MAC is configured", func() {
+		conf := &config.Config{}
+
+		mac, err := conf.ParseMAC()
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(mac).To(BeNil())
+	})
+
+	It("parses a valid MAC address", func() {
+		conf := &config.Config{}
+		conf.RuntimeConfig.MAC = "02:11:22:33:44:55"
+
+		mac, err := conf.ParseMAC()
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(mac).To(Equal(net.HardwareAddr{0x02, 0x11, 0x22, 0x33, 0x44, 0x55}))
+	})
+
+	It("returns error for an invalid MAC string", func() {
+		conf := &config.Config{}
+		conf.RuntimeConfig.MAC = "not-a-mac"
+
+		_, err := conf.ParseMAC()
+
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("invalid MAC address"))
+	})
+
+	It("parses MAC from runtimeConfig JSON", func() {
+		privKey, _ := wgtypes.GeneratePrivateKey()
+		peerKey, _ := wgtypes.GeneratePrivateKey()
+		stdin := newNetConfWithRuntimeConfig(privKey.String(), peerKey.PublicKey().String(), "10.0.0.1/24", map[string]any{
+			"mac": "02:ab:cd:ef:00:01",
+		})
+
+		conf, err := config.Parse(stdin)
+		Expect(err).NotTo(HaveOccurred())
+
+		mac, err := conf.ParseMAC()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(mac).To(Equal(net.HardwareAddr{0x02, 0xab, 0xcd, 0xef, 0x00, 0x01}))
+	})
+})
+
+var _ = Describe("BandwidthEntry", func() {
+	It("parses bandwidth config from runtimeConfig JSON", func() {
+		privKey, _ := wgtypes.GeneratePrivateKey()
+		peerKey, _ := wgtypes.GeneratePrivateKey()
+		stdin := newNetConfWithRuntimeConfig(privKey.String(), peerKey.PublicKey().String(), "10.0.0.1/24", map[string]any{
+			"bandwidth": map[string]any{
+				"ingressRate":  1000000,
+				"ingressBurst": 2000000,
+				"egressRate":   500000,
+				"egressBurst":  1000000,
+			},
+		})
+
+		conf, err := config.Parse(stdin)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(conf.RuntimeConfig.Bandwidth).NotTo(BeNil())
+		Expect(conf.RuntimeConfig.Bandwidth.IngressRate).To(Equal(uint64(1000000)))
+		Expect(conf.RuntimeConfig.Bandwidth.IngressBurst).To(Equal(uint64(2000000)))
+		Expect(conf.RuntimeConfig.Bandwidth.EgressRate).To(Equal(uint64(500000)))
+		Expect(conf.RuntimeConfig.Bandwidth.EgressBurst).To(Equal(uint64(1000000)))
+	})
+
+	It("bandwidth is nil when not set in runtimeConfig", func() {
+		privKey, _ := wgtypes.GeneratePrivateKey()
+		peerKey, _ := wgtypes.GeneratePrivateKey()
+		stdin := newNetConf(privKey.String(), peerKey.PublicKey().String(), "10.0.0.1/24")
+
+		conf, err := config.Parse(stdin)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(conf.RuntimeConfig.Bandwidth).To(BeNil())
 	})
 })

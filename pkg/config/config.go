@@ -25,6 +25,15 @@ func (c *PeerConfig) ResolveUDPAddr() (*net.UDPAddr, error) {
 	return net.ResolveUDPAddr("udp", c.Endpoint)
 }
 
+// BandwidthEntry holds rate-limit parameters from runtimeConfig.bandwidth.
+// Rates are in bits per second; bursts are in bits.
+type BandwidthEntry struct {
+	IngressRate  uint64 `json:"ingressRate"`
+	IngressBurst uint64 `json:"ingressBurst"`
+	EgressRate   uint64 `json:"egressRate"`
+	EgressBurst  uint64 `json:"egressBurst"`
+}
+
 type Config struct {
 	types.PluginConf
 	RuntimeConfig struct {
@@ -33,6 +42,25 @@ type Config struct {
 	PrivateKey string       `json:"privateKey"`
 	ListenPort int          `json:"listenPort,omitempty"`
 	Peers      []PeerConfig `json:"peers"`
+
+	RuntimeConfig struct {
+		IPs       []string        `json:"ips,omitempty"`
+		MAC       string          `json:"mac,omitempty"`
+		Bandwidth *BandwidthEntry `json:"bandwidth,omitempty"`
+	} `json:"runtimeConfig,omitempty"`
+}
+
+// ParseMAC parses the MAC address from runtimeConfig.mac.
+// Returns nil, nil when no MAC is configured.
+func (c *Config) ParseMAC() (net.HardwareAddr, error) {
+	if c.RuntimeConfig.MAC == "" {
+		return nil, nil
+	}
+	mac, err := net.ParseMAC(c.RuntimeConfig.MAC)
+	if err != nil {
+		return nil, fmt.Errorf("invalid MAC address %q: %w", c.RuntimeConfig.MAC, err)
+	}
+	return mac, nil
 }
 
 func Parse(stdin []byte) (*Config, error) {

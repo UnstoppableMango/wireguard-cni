@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 )
 
 // New returns a LinkManager for the named network interface.
@@ -140,4 +141,81 @@ func (l *netlinkLink) Routes() ([]*net.IPNet, error) {
 		result = append(result, ipNet)
 	}
 	return result, nil
+}
+
+func (l *netlinkLink) SetMAC(mac net.HardwareAddr) error {
+	return netlink.LinkSetHardwareAddr(l.link, mac)
+}
+
+// SetBandwidth applies ingress and egress rate limits to the link using tc qdiscs.
+// Rates are in bits per second; bursts are in bits.
+// Egress limiting uses a TBF qdisc on the root.
+// Ingress limiting uses an ingress qdisc with a U32 filter and police action.
+func (l *netlinkLink) SetBandwidth(ingressRate, ingressBurst, egressRate, egressBurst uint64) error {
+	idx := l.link.Attrs().Index
+
+	if egressRate > 0 {
+		// Convert bits/s → bytes/s and bits → bytes.
+		rateBytes := egressRate / 8
+		burstBytes := uint32(egressBurst / 8) //nolint:gosec
+		// Limit: how many bytes can be queued — use burst as a sensible default.
+		limitBytes := burstBytes
+		if limitBytes == 0 {
+			// Fall back: ~100ms of traffic at the given rate.
+			limitBytes = uint32(rateBytes / 10) //nolint:gosec
+		}
+		tbf := &netlink.Tbf{
+			QdiscAttrs: netlink.QdiscAttrs{
+				LinkIndex: idx,
+				Handle:    netlink.MakeHandle(1, 0),
+				Parent:    netlink.HANDLE_ROOT,
+			},
+			Rate:   rateBytes,
+			Buffer: burstBytes,
+			Limit:  limitBytes,
+		}
+		if err := netlink.QdiscAdd(tbf); err != nil {
+			return err
+		}
+	}
+
+	if ingressRate > 0 {
+		// Add ingress qdisc.
+		ingress := &netlink.Ingress{
+			QdiscAttrs: netlink.QdiscAttrs{
+				LinkIndex: idx,
+				Handle:    netlink.MakeHandle(0xffff, 0),
+				Parent:    netlink.HANDLE_INGRESS,
+			},
+		}
+		if err := netlink.QdiscAdd(ingress); err != nil {
+			return err
+		}
+
+		// Convert bits/s → bytes/s and bits → bytes.
+		rateBytes := uint32(ingressRate / 8)  //nolint:gosec
+		burstBytes := uint32(ingressBurst / 8) //nolint:gosec
+
+		// Add U32 filter with police action to drop excess traffic.
+		police := netlink.NewPoliceAction()
+		police.Rate = rateBytes
+		police.Burst = burstBytes
+		police.ExceedAction = netlink.TC_POLICE_SHOT
+		police.NotExceedAction = netlink.TC_POLICE_OK
+
+		filter := &netlink.U32{
+			FilterAttrs: netlink.FilterAttrs{
+				LinkIndex: idx,
+				Parent:    netlink.MakeHandle(0xffff, 0),
+				Priority:  1,
+				Protocol:  unix.ETH_P_ALL,
+			},
+			Police: police,
+		}
+		if err := netlink.FilterAdd(filter); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

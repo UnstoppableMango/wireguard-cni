@@ -13,6 +13,36 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+func newTestConfigWithMAC(mac string) *config.Config {
+	privKey, _ := wgtypes.GeneratePrivateKey()
+	peerKey, _ := wgtypes.GeneratePrivateKey()
+	conf := &config.Config{
+		Address:    "10.0.0.1/24",
+		PrivateKey: privKey.String(),
+		Peers: []config.PeerConfig{{
+			PublicKey:  peerKey.PublicKey().String(),
+			AllowedIPs: []string{"10.1.0.0/24"},
+		}},
+	}
+	conf.RuntimeConfig.MAC = mac
+	return conf
+}
+
+func newTestConfigWithBandwidth(bw *config.BandwidthEntry) *config.Config {
+	privKey, _ := wgtypes.GeneratePrivateKey()
+	peerKey, _ := wgtypes.GeneratePrivateKey()
+	conf := &config.Config{
+		Address:    "10.0.0.1/24",
+		PrivateKey: privKey.String(),
+		Peers: []config.PeerConfig{{
+			PublicKey:  peerKey.PublicKey().String(),
+			AllowedIPs: []string{"10.1.0.0/24"},
+		}},
+	}
+	conf.RuntimeConfig.Bandwidth = bw
+	return conf
+}
+
 func newTestConfig() (*config.Config, wgtypes.Key) {
 	privKey, err := wgtypes.GeneratePrivateKey()
 	Expect(err).NotTo(HaveOccurred())
@@ -176,6 +206,105 @@ var _ = Describe("Add", func() {
 		err := wireguard.Add(mgr, conf)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("add route"))
+	})
+
+	It("sets MAC when runtimeConfig.mac is configured", func() {
+		conf := newTestConfigWithMAC("02:11:22:33:44:55")
+		link := &fakeLink{}
+		mgr := &fakeLinkManager{createLink: link}
+
+		err := wireguard.Add(mgr, conf)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(link.setMAC).To(Equal(net.HardwareAddr{0x02, 0x11, 0x22, 0x33, 0x44, 0x55}))
+	})
+
+	It("does not call SetMAC when no MAC is configured", func() {
+		conf, _ := newTestConfig()
+		link := &fakeLink{}
+		mgr := &fakeLinkManager{createLink: link}
+
+		err := wireguard.Add(mgr, conf)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(link.setMAC).To(BeNil())
+	})
+
+	It("returns error for invalid MAC address", func() {
+		conf := newTestConfigWithMAC("not-a-mac")
+		link := &fakeLink{}
+		mgr := &fakeLinkManager{createLink: link}
+
+		err := wireguard.Add(mgr, conf)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("invalid configuration"))
+	})
+
+	It("returns error when SetMAC fails", func() {
+		conf := newTestConfigWithMAC("02:11:22:33:44:55")
+		link := &fakeLink{setMACErr: errors.New("mac error")}
+		mgr := &fakeLinkManager{createLink: link}
+
+		err := wireguard.Add(mgr, conf)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("set MAC"))
+	})
+
+	It("deletes the link when SetMAC fails", func() {
+		conf := newTestConfigWithMAC("02:11:22:33:44:55")
+		link := &fakeLink{setMACErr: errors.New("mac error")}
+		mgr := &fakeLinkManager{createLink: link}
+
+		_ = wireguard.Add(mgr, conf)
+		Expect(mgr.deleted).To(BeTrue())
+	})
+
+	It("applies bandwidth when runtimeConfig.bandwidth is configured", func() {
+		conf := newTestConfigWithBandwidth(&config.BandwidthEntry{
+			IngressRate:  1000000,
+			IngressBurst: 2000000,
+			EgressRate:   500000,
+			EgressBurst:  1000000,
+		})
+		link := &fakeLink{}
+		mgr := &fakeLinkManager{createLink: link}
+
+		err := wireguard.Add(mgr, conf)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(link.setBandwidthCalled).To(BeTrue())
+	})
+
+	It("does not call SetBandwidth when no bandwidth is configured", func() {
+		conf, _ := newTestConfig()
+		link := &fakeLink{}
+		mgr := &fakeLinkManager{createLink: link}
+
+		err := wireguard.Add(mgr, conf)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(link.setBandwidthCalled).To(BeFalse())
+	})
+
+	It("returns error when SetBandwidth fails", func() {
+		conf := newTestConfigWithBandwidth(&config.BandwidthEntry{
+			EgressRate:  1000000,
+			EgressBurst: 2000000,
+		})
+		link := &fakeLink{setBandwidthErr: errors.New("bw error")}
+		mgr := &fakeLinkManager{createLink: link}
+
+		err := wireguard.Add(mgr, conf)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("set bandwidth"))
+	})
+
+	It("deletes the link when SetBandwidth fails", func() {
+		conf := newTestConfigWithBandwidth(&config.BandwidthEntry{
+			EgressRate:  1000000,
+			EgressBurst: 2000000,
+		})
+		link := &fakeLink{setBandwidthErr: errors.New("bw error")}
+		mgr := &fakeLinkManager{createLink: link}
+
+		_ = wireguard.Add(mgr, conf)
+		Expect(mgr.deleted).To(BeTrue())
 	})
 
 	It("adds routes for all peers and CIDRs during create path", func() {

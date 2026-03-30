@@ -18,10 +18,21 @@ func Add(mgr network.LinkManager, conf *config.Config) error {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
+	mac, err := conf.ParseMAC()
+	if err != nil {
+		return fmt.Errorf("invalid configuration: %w", err)
+	}
+
 	zap.L().Info("looking up wireguard link")
 	link, err := mgr.Get()
 	if err != nil && !network.IsNotFound(err) {
 		return fmt.Errorf("get link: %w", err)
+    }
+    
+	zap.L().Info("creating wireguard link")
+	link, err := mgr.Create()
+	if err != nil {
+		return fmt.Errorf("add link: %w", err)
 	}
 
 	if err != nil {
@@ -36,6 +47,22 @@ func Add(mgr network.LinkManager, conf *config.Config) error {
 	if err := setup(link, addrs, wg); err != nil {
 		_ = mgr.Delete()
 		return fmt.Errorf("setup link %s: %w", link, err)
+	}
+
+	if mac != nil {
+		zap.L().Info("setting MAC address", zap.String("mac", mac.String()))
+		if err := link.SetMAC(mac); err != nil {
+			_ = mgr.Delete()
+			return fmt.Errorf("set MAC %s: %w", mac, err)
+		}
+	}
+
+	if bw := conf.RuntimeConfig.Bandwidth; bw != nil {
+		zap.L().Info("applying bandwidth limits")
+		if err := link.SetBandwidth(bw.IngressRate, bw.IngressBurst, bw.EgressRate, bw.EgressBurst); err != nil {
+			_ = mgr.Delete()
+			return fmt.Errorf("set bandwidth: %w", err)
+		}
 	}
 
 	zap.L().Info("wireguard link ready")
