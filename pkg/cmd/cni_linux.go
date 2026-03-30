@@ -51,7 +51,7 @@ func Check(args *skel.CmdArgs) error {
 	logger(args).Info("cmdCheck")
 	conf, err := config.Parse(args.StdinData)
 	if err != nil {
-		return err
+		return fmt.Errorf("cmdCheck: %w", err)
 	}
 	if conf.PrevResult == nil {
 		return ErrPrevResult

@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"encoding/json"
+	"maps"
 	"net"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -14,11 +15,12 @@ import (
 )
 
 func newNetConfWithRuntimeConfig(privKey, peerPubKey, address string, rc map[string]any) []byte {
+	merged := map[string]any{"ips": []string{address}}
+	maps.Copy(merged, rc)
 	conf := map[string]any{
 		"cniVersion": "1.0.0",
 		"name":       "wg-test",
 		"type":       "wireguard-cni",
-		"address":    address,
 		"privateKey": privKey,
 		"peers": []map[string]any{
 			{
@@ -26,7 +28,7 @@ func newNetConfWithRuntimeConfig(privKey, peerPubKey, address string, rc map[str
 				"allowedIPs": []string{"10.0.0.0/8"},
 			},
 		},
-		"runtimeConfig": rc,
+		"runtimeConfig": merged,
 	}
 	b, _ := json.Marshal(conf)
 	return b
@@ -266,7 +268,7 @@ var _ = Describe("Result", func() {
 		Expect(result.Routes).To(BeEmpty())
 	})
 
-	It("uses only the first IP when multiple are provided", func() {
+	It("emits all IPs when multiple are provided", func() {
 		conf := configWithIPs("10.0.0.1/24", "10.0.0.2/24")
 
 		result, err := conf.Result(args)
