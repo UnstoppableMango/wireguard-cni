@@ -209,6 +209,32 @@ var _ = Describe("Add", func() {
 		Expect(link.addedRoutes).To(HaveLen(4))
 	})
 
+	It("returns error when Addresses fails during reconfigure path without calling Create or Delete", func() {
+		conf, _ := newTestConfig()
+		link := &fakeLink{addressesErr: errors.New("addr error")}
+		mgr := &fakeLinkManager{getLink: link}
+
+		err := wireguard.Add(mgr, conf)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("get addresses"))
+		Expect(mgr.created).To(BeFalse())
+		Expect(mgr.deleted).To(BeFalse())
+	})
+
+	It("returns error when AssignAddress fails during reconfigure path", func() {
+		conf, _ := newTestConfig()
+		link := &fakeLink{
+			addresses:        []*net.IPNet{},
+			assignAddressErr: errors.New("assign failed"),
+		}
+		mgr := &fakeLinkManager{getLink: link}
+
+		err := wireguard.Add(mgr, conf)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("assign address"))
+		Expect(mgr.created).To(BeFalse())
+	})
+
 	It("adds routes for all peers and CIDRs during reconfigure path", func() {
 		privKey, err := wgtypes.GeneratePrivateKey()
 		Expect(err).NotTo(HaveOccurred())
