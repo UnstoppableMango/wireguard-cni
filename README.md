@@ -25,7 +25,9 @@ The plugin is configured via a standard CNI conflist. Example:
   "plugins": [
     {
       "type": "wireguard-cni",
-      "address": "10.100.0.1/24",
+      "runtimeConfig": {
+        "ips": ["10.100.0.1/24"]
+      },
       "privateKey": "REPLACE_WITH_WG_PRIVATE_KEY",
       "listenPort": 51820,
       "peers": [
@@ -45,7 +47,7 @@ The plugin is configured via a standard CNI conflist. Example:
 
 | Field | Required | Description |
 |---|---|---|
-| `address` | yes | IP address (CIDR) assigned to the WireGuard interface |
+| `runtimeConfig.ips` | yes | IP address(es) (CIDR) assigned to the WireGuard interface |
 | `privateKey` | yes | Base64-encoded WireGuard private key |
 | `listenPort` | no | UDP port to listen on |
 | `peers` | no | List of WireGuard peers |
