@@ -8,6 +8,11 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+// notFoundError returns network.ErrLinkNotFound so that network.IsNotFound returns true.
+func notFoundError() error {
+	return network.ErrLinkNotFound
+}
+
 // fakeLink implements network.Link and records calls.
 type fakeLink struct {
 	assignAddressErr      error
@@ -22,9 +27,11 @@ type fakeLink struct {
 	assignedAddr   *net.IPNet
 	configuredConf *wgtypes.Config
 	addedRoutes    []*net.IPNet
+	assignCalled   bool
 }
 
 func (f *fakeLink) AssignAddress(addr *net.IPNet) error {
+	f.assignCalled = true
 	f.assignedAddr = addr
 	return f.assignAddressErr
 }
@@ -63,9 +70,11 @@ type fakeLinkManager struct {
 	getLink    network.Link
 	getErr     error
 	deleted    bool
+	created    bool
 }
 
 func (f *fakeLinkManager) Create() (network.Link, error) {
+	f.created = true
 	return f.createLink, f.createErr
 }
 

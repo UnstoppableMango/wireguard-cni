@@ -1,10 +1,19 @@
 package network
 
 import (
+	"errors"
 	"net"
 
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
+
+// ErrLinkNotFound is returned by Get when the named network interface does not exist.
+var ErrLinkNotFound = errors.New("link not found")
+
+// IsNotFound reports whether err indicates that a network link was not found.
+func IsNotFound(err error) bool {
+	return errors.Is(err, ErrLinkNotFound)
+}
 
 // Link is a handle to a network interface. Methods correspond to the
 // operations the CNI plugin performs when configuring an interface.
@@ -31,6 +40,7 @@ type LinkManager interface {
 	Create() (Link, error)
 	// Delete removes the link. Idempotent: returns nil if not found.
 	Delete() error
-	// Get returns a handle to the existing link.
+	// Get returns a handle to the existing link. Returns ErrLinkNotFound
+	// (testable with IsNotFound) when the interface does not exist.
 	Get() (Link, error)
 }
