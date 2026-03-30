@@ -4,6 +4,7 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/containernetworking/cni/pkg/skel"
 	current "github.com/containernetworking/cni/pkg/types/100"
@@ -58,7 +59,7 @@ func Check(args *skel.CmdArgs) error {
 
 	prev, err := current.GetResult(conf.PrevResult)
 	if err != nil {
-		return err
+		return fmt.Errorf("get prevResult: %w", err)
 	}
 
 	return ns.WithNetNSPath(args.Netns, func(ns.NetNS) error {

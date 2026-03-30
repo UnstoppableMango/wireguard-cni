@@ -269,7 +269,8 @@ var _ = Describe("Add", func() {
 
 // newTestPrevResult builds a minimal prevResult with the given interface name and address.
 func newTestPrevResult(ifName, cidr string) *current.Result {
-	ip, ipnet, _ := net.ParseCIDR(cidr)
+	ip, ipnet, err := net.ParseCIDR(cidr)
+	Expect(err).NotTo(HaveOccurred())
 	ifIdx := 0
 	return &current.Result{
 		CNIVersion: "1.0.0",

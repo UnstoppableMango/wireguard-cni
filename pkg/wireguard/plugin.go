@@ -13,7 +13,7 @@ import (
 )
 
 func Add(mgr network.LinkManager, conf *config.Config) error {
-	addr, wg, err := conf.Wireguard()
+	addrs, wg, err := conf.Wireguard()
 	if err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
@@ -129,10 +129,12 @@ func Check(mgr network.LinkManager, conf *config.Config, ifName string, prevResu
 	return nil
 }
 
-func setup(link network.Link, addr *net.IPNet, conf *wgtypes.Config) error {
-	zap.L().Info("assigning address", zap.String("address", addr.String()))
-	if err := link.AssignAddress(addr); err != nil {
-		return fmt.Errorf("assign address %v: %w", addr, err)
+func setup(link network.Link, addrs []*net.IPNet, conf *wgtypes.Config) error {
+	for _, addr := range addrs {
+		zap.L().Info("assigning address", zap.String("address", addr.String()))
+		if err := link.AssignAddress(addr); err != nil {
+			return fmt.Errorf("assign address %v: %w", addr, err)
+		}
 	}
 	return applyConfig(link, conf)
 }
