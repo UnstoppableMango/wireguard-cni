@@ -6,8 +6,8 @@ import (
 	"errors"
 
 	"github.com/containernetworking/cni/pkg/skel"
-	"github.com/containernetworking/cni/pkg/version"
 	current "github.com/containernetworking/cni/pkg/types/100"
+	"github.com/containernetworking/cni/pkg/version"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/unstoppablemango/wireguard-cni/pkg/config"
 	"github.com/unstoppablemango/wireguard-cni/pkg/network"
