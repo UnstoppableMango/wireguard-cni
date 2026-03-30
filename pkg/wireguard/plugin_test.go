@@ -471,6 +471,61 @@ var _ = Describe("Check", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
+	It("validates a default IPv4 route (0.0.0.0/0) from prevResult", func() {
+		conf, privKey := newTestConfig()
+		_, addr, _ := net.ParseCIDR(conf.RuntimeConfig.IPs[0])
+		ip, _, _ := net.ParseCIDR(conf.RuntimeConfig.IPs[0])
+		addr.IP = ip
+		_, defaultRoute, _ := net.ParseCIDR("0.0.0.0/0")
+		link := &fakeLink{
+			addresses: []*net.IPNet{addr},
+			routes:    []*net.IPNet{defaultRoute},
+			publicKey: privKey.PublicKey(),
+		}
+		mgr := &fakeLinkManager{getLink: link}
+		ifIdx := 0
+		prevResult := &current.Result{
+			CNIVersion: "1.0.0",
+			Interfaces: []*current.Interface{{Name: ifName}},
+			IPs: []*current.IPConfig{{
+				Interface: &ifIdx,
+				Address:   net.IPNet{IP: addr.IP, Mask: addr.Mask},
+			}},
+			Routes: []*cnitypes.Route{{Dst: *defaultRoute}},
+		}
+
+		err := wireguard.Check(mgr, conf, ifName, prevResult)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("returns error when default IPv4 route from prevResult is not installed", func() {
+		conf, privKey := newTestConfig()
+		_, addr, _ := net.ParseCIDR(conf.RuntimeConfig.IPs[0])
+		ip, _, _ := net.ParseCIDR(conf.RuntimeConfig.IPs[0])
+		addr.IP = ip
+		_, defaultRoute, _ := net.ParseCIDR("0.0.0.0/0")
+		link := &fakeLink{
+			addresses: []*net.IPNet{addr},
+			routes:    []*net.IPNet{},
+			publicKey: privKey.PublicKey(),
+		}
+		mgr := &fakeLinkManager{getLink: link}
+		ifIdx := 0
+		prevResult := &current.Result{
+			CNIVersion: "1.0.0",
+			Interfaces: []*current.Interface{{Name: ifName}},
+			IPs: []*current.IPConfig{{
+				Interface: &ifIdx,
+				Address:   net.IPNet{IP: addr.IP, Mask: addr.Mask},
+			}},
+			Routes: []*cnitypes.Route{{Dst: *defaultRoute}},
+		}
+
+		err := wireguard.Check(mgr, conf, ifName, prevResult)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("not found"))
+	})
+
 	It("returns error when PublicKey fails", func() {
 		conf, _ := newTestConfig()
 		_, addr, _ := net.ParseCIDR(conf.RuntimeConfig.IPs[0])
