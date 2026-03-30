@@ -43,17 +43,10 @@ func Add(mgr network.LinkManager, conf *config.Config) error {
 		}
 	}
 
-	zap.L().Info("configuring wireguard link")
-	if err := setup(link, addrs, wg); err != nil {
-		_ = mgr.Delete()
-		return fmt.Errorf("setup link %s: %w", link, err)
-	}
-
-	if mac != nil {
-		zap.L().Info("setting MAC address", zap.String("mac", mac.String()))
-		if err := link.SetMAC(mac); err != nil {
+		zap.L().Info("configuring wireguard link")
+	if err := setup(link, addr, wg, mac); err != nil {
 			_ = mgr.Delete()
-			return fmt.Errorf("set MAC %s: %w", mac, err)
+			return fmt.Errorf("setup link %s: %w", link, err)
 		}
 	}
 
@@ -182,6 +175,13 @@ func applyConfig(link network.Link, conf *wgtypes.Config) error {
 	zap.L().Info("applying wireguard configuration")
 	if err := link.ConfigureWireGuard(*conf); err != nil {
 		return fmt.Errorf("configure device %v: %w", link, err)
+	}
+
+	if mac != nil {
+		zap.L().Info("setting MAC address", zap.String("mac", mac.String()))
+		if err := link.SetMAC(mac); err != nil {
+			return fmt.Errorf("set MAC %s: %w", mac.String(), err)
+		}
 	}
 
 	zap.L().Info("bringing link up")

@@ -14,8 +14,10 @@ import (
 )
 
 func newTestConfigWithMAC(mac string) *config.Config {
-	privKey, _ := wgtypes.GeneratePrivateKey()
-	peerKey, _ := wgtypes.GeneratePrivateKey()
+	privKey, err := wgtypes.GeneratePrivateKey()
+	Expect(err).NotTo(HaveOccurred())
+	peerKey, err := wgtypes.GeneratePrivateKey()
+	Expect(err).NotTo(HaveOccurred())
 	conf := &config.Config{
 		PrivateKey: privKey.String(),
 		Peers: []config.PeerConfig{{
@@ -29,8 +31,10 @@ func newTestConfigWithMAC(mac string) *config.Config {
 }
 
 func newTestConfigWithBandwidth(bw *config.BandwidthEntry) *config.Config {
-	privKey, _ := wgtypes.GeneratePrivateKey()
-	peerKey, _ := wgtypes.GeneratePrivateKey()
+	privKey, err := wgtypes.GeneratePrivateKey()
+	Expect(err).NotTo(HaveOccurred())
+	peerKey, err := wgtypes.GeneratePrivateKey()
+	Expect(err).NotTo(HaveOccurred())
 	conf := &config.Config{
 		PrivateKey: privKey.String(),
 		Peers: []config.PeerConfig{{
