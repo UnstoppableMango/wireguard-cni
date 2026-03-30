@@ -17,16 +17,31 @@ func Add(mgr network.LinkManager, conf *config.Config) error {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	zap.L().Info("creating wireguard link")
-	link, err := mgr.Create()
-	if err != nil {
+	zap.L().Info("looking up wireguard link")
+	link, err := mgr.Get()
+	if err != nil && !network.IsNotFound(err) {
 		return fmt.Errorf("add link: %w", err)
 	}
 
-	zap.L().Info("configuring wireguard link")
-	if err := setup(link, addr, wg); err != nil {
-		_ = mgr.Delete()
-		return fmt.Errorf("add link %s: %w", link, err)
+	if err == nil {
+		// Interface already exists — reconfigure it.
+		zap.L().Info("reconfiguring existing wireguard link")
+		if err := reconfigure(link, addr, wg); err != nil {
+			return fmt.Errorf("add link %s: %w", link, err)
+		}
+	} else {
+		// Interface not found — create and set up fresh.
+		zap.L().Info("creating wireguard link")
+		link, err = mgr.Create()
+		if err != nil {
+			return fmt.Errorf("add link: %w", err)
+		}
+
+		zap.L().Info("configuring wireguard link")
+		if err := setup(link, addr, wg); err != nil {
+			_ = mgr.Delete()
+			return fmt.Errorf("add link %s: %w", link, err)
+		}
 	}
 
 	zap.L().Info("wireguard link ready")
@@ -72,6 +87,47 @@ func setup(link network.Link, addr *net.IPNet, conf *wgtypes.Config) error {
 	zap.L().Info("assigning address", zap.String("address", addr.String()))
 	if err := link.AssignAddress(addr); err != nil {
 		return fmt.Errorf("assign address %v: %w", addr, err)
+	}
+
+	zap.L().Info("applying wireguard configuration")
+	if err := link.ConfigureWireGuard(*conf); err != nil {
+		return fmt.Errorf("configure device %v: %w", link, err)
+	}
+
+	zap.L().Info("bringing link up")
+	if err := link.BringUp(); err != nil {
+		return fmt.Errorf("set link up: %w", err)
+	}
+
+	for _, peer := range conf.Peers {
+		for _, ip := range peer.AllowedIPs {
+			zap.L().Info("adding route", zap.String("dst", ip.String()))
+			if err := link.AddRoute(new(ip)); err != nil {
+				return fmt.Errorf("add route %v: %w", ip, err)
+			}
+		}
+	}
+	return nil
+}
+
+// reconfigure applies the desired configuration to an existing WireGuard link.
+// Unlike setup, it only assigns the address if not already present, since other
+// plugins in the chain may have already assigned addresses to the interface.
+func reconfigure(link network.Link, addr *net.IPNet, conf *wgtypes.Config) error {
+	zap.L().Info("checking existing addresses")
+	addrs, err := link.Addresses()
+	if err != nil {
+		return fmt.Errorf("get addresses %v: %w", link, err)
+	}
+
+	hasAddr := slices.ContainsFunc(addrs, func(a *net.IPNet) bool {
+		return a.String() == addr.String()
+	})
+	if !hasAddr {
+		zap.L().Info("assigning address", zap.String("address", addr.String()))
+		if err := link.AssignAddress(addr); err != nil {
+			return fmt.Errorf("assign address %v: %w", addr, err)
+		}
 	}
 
 	zap.L().Info("applying wireguard configuration")

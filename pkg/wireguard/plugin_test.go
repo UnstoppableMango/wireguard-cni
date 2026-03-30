@@ -30,16 +30,56 @@ func newTestConfig() (*config.Config, wgtypes.Key) {
 }
 
 var _ = Describe("Add", func() {
-	It("creates the link and runs setup", func() {
+	It("creates the link and runs setup when interface does not exist", func() {
 		conf, _ := newTestConfig()
 		link := &fakeLink{}
-		mgr := &fakeLinkManager{createLink: link}
+		mgr := &fakeLinkManager{
+			getErr:     notFoundError(),
+			createLink: link,
+		}
 
 		err := wireguard.Add(mgr, conf)
 		Expect(err).NotTo(HaveOccurred())
+		Expect(mgr.created).To(BeTrue())
 		Expect(link.assignedAddr).NotTo(BeNil())
 		Expect(link.configuredConf).NotTo(BeNil())
 		Expect(link.addedRoutes).To(HaveLen(1))
+	})
+
+	It("reconfigures existing interface without calling Create", func() {
+		conf, _ := newTestConfig()
+		link := &fakeLink{}
+		mgr := &fakeLinkManager{getLink: link}
+
+		err := wireguard.Add(mgr, conf)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(mgr.created).To(BeFalse())
+		Expect(link.configuredConf).NotTo(BeNil())
+		Expect(link.addedRoutes).To(HaveLen(1))
+	})
+
+	It("assigns address when reconfiguring and address not already present", func() {
+		conf, _ := newTestConfig()
+		link := &fakeLink{addresses: []*net.IPNet{}}
+		mgr := &fakeLinkManager{getLink: link}
+
+		err := wireguard.Add(mgr, conf)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(link.assignCalled).To(BeTrue())
+		Expect(link.assignedAddr).NotTo(BeNil())
+	})
+
+	It("skips AssignAddress when reconfiguring and address already present", func() {
+		conf, _ := newTestConfig()
+		_, addr, _ := net.ParseCIDR(conf.Address)
+		ip, _, _ := net.ParseCIDR(conf.Address)
+		addr.IP = ip
+		link := &fakeLink{addresses: []*net.IPNet{addr}}
+		mgr := &fakeLinkManager{getLink: link}
+
+		err := wireguard.Add(mgr, conf)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(link.assignCalled).To(BeFalse())
 	})
 
 	It("returns error when config is invalid", func() {
@@ -51,19 +91,34 @@ var _ = Describe("Add", func() {
 		Expect(err.Error()).To(ContainSubstring("invalid configuration"))
 	})
 
+	It("returns error when Get fails with non-not-found error", func() {
+		conf, _ := newTestConfig()
+		mgr := &fakeLinkManager{getErr: errors.New("unexpected error")}
+
+		err := wireguard.Add(mgr, conf)
+		Expect(err).To(HaveOccurred())
+		Expect(err).To(MatchError("add link: unexpected error"))
+	})
+
 	It("returns error when Create fails", func() {
 		conf, _ := newTestConfig()
-		mgr := &fakeLinkManager{createErr: errors.New("create failed")}
+		mgr := &fakeLinkManager{
+			getErr:    notFoundError(),
+			createErr: errors.New("create failed"),
+		}
 
 		err := wireguard.Add(mgr, conf)
 		Expect(err).To(HaveOccurred())
 		Expect(err).To(MatchError("add link: create failed"))
 	})
 
-	It("deletes the link when setup fails", func() {
+	It("deletes the link when setup fails after create", func() {
 		conf, _ := newTestConfig()
 		link := &fakeLink{assignAddressErr: errors.New("assign failed")}
-		mgr := &fakeLinkManager{createLink: link}
+		mgr := &fakeLinkManager{
+			getErr:     notFoundError(),
+			createLink: link,
+		}
 
 		err := wireguard.Add(mgr, conf)
 		Expect(err).To(HaveOccurred())
@@ -71,46 +126,58 @@ var _ = Describe("Add", func() {
 		Expect(mgr.deleted).To(BeTrue())
 	})
 
-	It("returns error when AssignAddress fails", func() {
+	It("returns error when AssignAddress fails during create path", func() {
 		conf, _ := newTestConfig()
 		link := &fakeLink{assignAddressErr: errors.New("addr error")}
-		mgr := &fakeLinkManager{createLink: link}
+		mgr := &fakeLinkManager{
+			getErr:     notFoundError(),
+			createLink: link,
+		}
 
 		err := wireguard.Add(mgr, conf)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("assign address"))
 	})
 
-	It("returns error when ConfigureWireGuard fails", func() {
+	It("returns error when ConfigureWireGuard fails during create path", func() {
 		conf, _ := newTestConfig()
 		link := &fakeLink{configureWireguardErr: errors.New("wg error")}
-		mgr := &fakeLinkManager{createLink: link}
+		mgr := &fakeLinkManager{
+			getErr:     notFoundError(),
+			createLink: link,
+		}
 
 		err := wireguard.Add(mgr, conf)
 		Expect(err).To(HaveOccurred())
 	})
 
-	It("returns error when BringUp fails", func() {
+	It("returns error when BringUp fails during create path", func() {
 		conf, _ := newTestConfig()
 		link := &fakeLink{bringUpErr: errors.New("up error")}
-		mgr := &fakeLinkManager{createLink: link}
+		mgr := &fakeLinkManager{
+			getErr:     notFoundError(),
+			createLink: link,
+		}
 
 		err := wireguard.Add(mgr, conf)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("set link up"))
 	})
 
-	It("returns error when AddRoute fails", func() {
+	It("returns error when AddRoute fails during create path", func() {
 		conf, _ := newTestConfig()
 		link := &fakeLink{addRouteErr: errors.New("route error")}
-		mgr := &fakeLinkManager{createLink: link}
+		mgr := &fakeLinkManager{
+			getErr:     notFoundError(),
+			createLink: link,
+		}
 
 		err := wireguard.Add(mgr, conf)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("add route"))
 	})
 
-	It("adds routes for all peers and CIDRs", func() {
+	It("adds routes for all peers and CIDRs during create path", func() {
 		privKey, _ := wgtypes.GeneratePrivateKey()
 		peer1Key, _ := wgtypes.GeneratePrivateKey()
 		peer2Key, _ := wgtypes.GeneratePrivateKey()
@@ -129,7 +196,36 @@ var _ = Describe("Add", func() {
 		}
 		conf.RuntimeConfig.IPs = []string{"10.0.0.1/24"}
 		link := &fakeLink{}
-		mgr := &fakeLinkManager{createLink: link}
+		mgr := &fakeLinkManager{
+			getErr:     notFoundError(),
+			createLink: link,
+		}
+
+		err := wireguard.Add(mgr, conf)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(link.addedRoutes).To(HaveLen(4))
+	})
+
+	It("adds routes for all peers and CIDRs during reconfigure path", func() {
+		privKey, _ := wgtypes.GeneratePrivateKey()
+		peer1Key, _ := wgtypes.GeneratePrivateKey()
+		peer2Key, _ := wgtypes.GeneratePrivateKey()
+		conf := &config.Config{
+			Address:    "10.0.0.1/24",
+			PrivateKey: privKey.String(),
+			Peers: []config.PeerConfig{
+				{
+					PublicKey:  peer1Key.PublicKey().String(),
+					AllowedIPs: []string{"10.1.0.0/24", "10.2.0.0/24"},
+				},
+				{
+					PublicKey:  peer2Key.PublicKey().String(),
+					AllowedIPs: []string{"10.3.0.0/24", "10.4.0.0/24"},
+				},
+			},
+		}
+		link := &fakeLink{}
+		mgr := &fakeLinkManager{getLink: link}
 
 		err := wireguard.Add(mgr, conf)
 		Expect(err).NotTo(HaveOccurred())
