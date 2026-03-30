@@ -18,14 +18,15 @@ func newTestConfig() (*config.Config, wgtypes.Key) {
 	peerKey, err := wgtypes.GeneratePrivateKey()
 	Expect(err).NotTo(HaveOccurred())
 
-	return &config.Config{
-		Address:    "10.0.0.1/24",
+	conf := &config.Config{
 		PrivateKey: privKey.String(),
 		Peers: []config.PeerConfig{{
 			PublicKey:  peerKey.PublicKey().String(),
 			AllowedIPs: []string{"10.1.0.0/24"},
 		}},
-	}, privKey
+	}
+	conf.RuntimeConfig.IPs = []string{"10.0.0.1/24"}
+	return conf, privKey
 }
 
 var _ = Describe("Add", func() {
@@ -114,7 +115,6 @@ var _ = Describe("Add", func() {
 		peer1Key, _ := wgtypes.GeneratePrivateKey()
 		peer2Key, _ := wgtypes.GeneratePrivateKey()
 		conf := &config.Config{
-			Address:    "10.0.0.1/24",
 			PrivateKey: privKey.String(),
 			Peers: []config.PeerConfig{
 				{
@@ -127,6 +127,7 @@ var _ = Describe("Add", func() {
 				},
 			},
 		}
+		conf.RuntimeConfig.IPs = []string{"10.0.0.1/24"}
 		link := &fakeLink{}
 		mgr := &fakeLinkManager{createLink: link}
 
@@ -139,8 +140,8 @@ var _ = Describe("Add", func() {
 var _ = Describe("Check", func() {
 	It("succeeds when address and public key match", func() {
 		conf, privKey := newTestConfig()
-		_, addr, _ := net.ParseCIDR(conf.Address)
-		ip, _, _ := net.ParseCIDR(conf.Address)
+		_, addr, _ := net.ParseCIDR(conf.RuntimeConfig.IPs[0])
+		ip, _, _ := net.ParseCIDR(conf.RuntimeConfig.IPs[0])
 		addr.IP = ip
 		link := &fakeLink{
 			addresses: []*net.IPNet{addr},
@@ -192,8 +193,8 @@ var _ = Describe("Check", func() {
 
 	It("returns error when PublicKey fails", func() {
 		conf, _ := newTestConfig()
-		_, addr, _ := net.ParseCIDR(conf.Address)
-		ip, _, _ := net.ParseCIDR(conf.Address)
+		_, addr, _ := net.ParseCIDR(conf.RuntimeConfig.IPs[0])
+		ip, _, _ := net.ParseCIDR(conf.RuntimeConfig.IPs[0])
 		addr.IP = ip
 		link := &fakeLink{
 			addresses:    []*net.IPNet{addr},
@@ -208,8 +209,8 @@ var _ = Describe("Check", func() {
 
 	It("returns error when public key does not match", func() {
 		conf, _ := newTestConfig()
-		_, addr, _ := net.ParseCIDR(conf.Address)
-		ip, _, _ := net.ParseCIDR(conf.Address)
+		_, addr, _ := net.ParseCIDR(conf.RuntimeConfig.IPs[0])
+		ip, _, _ := net.ParseCIDR(conf.RuntimeConfig.IPs[0])
 		addr.IP = ip
 		wrongKey, _ := wgtypes.GeneratePrivateKey()
 		link := &fakeLink{
