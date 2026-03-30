@@ -17,13 +17,13 @@ func newTestConfigWithMAC(mac string) *config.Config {
 	privKey, _ := wgtypes.GeneratePrivateKey()
 	peerKey, _ := wgtypes.GeneratePrivateKey()
 	conf := &config.Config{
-		Address:    "10.0.0.1/24",
 		PrivateKey: privKey.String(),
 		Peers: []config.PeerConfig{{
 			PublicKey:  peerKey.PublicKey().String(),
 			AllowedIPs: []string{"10.1.0.0/24"},
 		}},
 	}
+	conf.RuntimeConfig.IPs = []string{"10.0.0.1/24"}
 	conf.RuntimeConfig.MAC = mac
 	return conf
 }
@@ -32,13 +32,13 @@ func newTestConfigWithBandwidth(bw *config.BandwidthEntry) *config.Config {
 	privKey, _ := wgtypes.GeneratePrivateKey()
 	peerKey, _ := wgtypes.GeneratePrivateKey()
 	conf := &config.Config{
-		Address:    "10.0.0.1/24",
 		PrivateKey: privKey.String(),
 		Peers: []config.PeerConfig{{
 			PublicKey:  peerKey.PublicKey().String(),
 			AllowedIPs: []string{"10.1.0.0/24"},
 		}},
 	}
+	conf.RuntimeConfig.IPs = []string{"10.0.0.1/24"}
 	conf.RuntimeConfig.Bandwidth = bw
 	return conf
 }

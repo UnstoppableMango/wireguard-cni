@@ -36,18 +36,14 @@ type BandwidthEntry struct {
 
 type Config struct {
 	types.PluginConf
-	RuntimeConfig struct {
-		IPs []string `json:"ips,omitempty"`
-	} `json:"runtimeConfig,omitempty"`
-	PrivateKey string       `json:"privateKey"`
-	ListenPort int          `json:"listenPort,omitempty"`
-	Peers      []PeerConfig `json:"peers"`
-
+	PrivateKey    string       `json:"privateKey"`
+	ListenPort    int          `json:"listenPort,omitempty"`
+	Peers         []PeerConfig `json:"peers"`
 	RuntimeConfig struct {
 		IPs       []string        `json:"ips,omitempty"`
 		MAC       string          `json:"mac,omitempty"`
 		Bandwidth *BandwidthEntry `json:"bandwidth,omitempty"`
-	} `json:"runtimeConfig,omitempty"`
+	} `json:"runtimeConfig"`
 }
 
 // ParseMAC parses the MAC address from runtimeConfig.mac.
