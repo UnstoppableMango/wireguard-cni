@@ -30,7 +30,6 @@ type Config struct {
 	Address    string       `json:"address"`
 	PrivateKey string       `json:"privateKey"`
 	ListenPort int          `json:"listenPort,omitempty"`
-	Isolated   bool         `json:"isolated,omitempty"`
 	Peers      []PeerConfig `json:"peers"`
 }
 

@@ -19,10 +19,7 @@ func Add(args *skel.CmdArgs) error {
 	if err != nil {
 		return err
 	}
-	if conf.Isolated && conf.PrevResult != nil {
-		return ErrIsolated
-	}
-	if !conf.Isolated && conf.PrevResult != nil {
+	if conf.PrevResult != nil {
 		if ok, err := version.GreaterThanOrEqualTo(conf.CNIVersion, "0.3.0"); err != nil || !ok {
 			return errors.Join(ErrChainedVersion, err)
 		}
