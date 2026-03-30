@@ -58,6 +58,9 @@ func Check(mgr network.LinkManager, conf *config.Config, ifName string, prevResu
 	if err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
+	if prevResult == nil {
+		return fmt.Errorf("check: missing prevResult")
+	}
 	link, err := mgr.Get()
 	if err != nil {
 		return fmt.Errorf("check link: %w", err)
@@ -71,6 +74,9 @@ func Check(mgr network.LinkManager, conf *config.Config, ifName string, prevResu
 			break
 		}
 	}
+	if ifIdx == -1 {
+		return fmt.Errorf("check link %s: interface %s not found in prevResult", link, ifName)
+	}
 
 	// Verify IPs from prevResult are assigned.
 	zap.L().Info("checking link addresses from prevResult")
@@ -78,6 +84,7 @@ func Check(mgr network.LinkManager, conf *config.Config, ifName string, prevResu
 	if err != nil {
 		return fmt.Errorf("check link %s: %w", link, err)
 	}
+	ipValidated := false
 	for _, ipConf := range prevResult.IPs {
 		if ipConf.Interface == nil || *ipConf.Interface != ifIdx {
 			continue
@@ -88,20 +95,26 @@ func Check(mgr network.LinkManager, conf *config.Config, ifName string, prevResu
 		}) {
 			return fmt.Errorf("check link %s: address %s not found", link, ip.String())
 		}
+		ipValidated = true
+	}
+	if !ipValidated {
+		return fmt.Errorf("check link %s: no IPs from prevResult matched interface %s", link, ifName)
 	}
 
 	// Verify routes from prevResult are installed.
-	zap.L().Info("checking link routes from prevResult")
-	routes, err := link.Routes()
-	if err != nil {
-		return fmt.Errorf("check link %s: %w", link, err)
-	}
-	for _, route := range prevResult.Routes {
-		dst := route.Dst
-		if !slices.ContainsFunc(routes, func(r *net.IPNet) bool {
-			return r.String() == dst.String()
-		}) {
-			return fmt.Errorf("check link %s: route %s not found", link, dst.String())
+	if len(prevResult.Routes) > 0 {
+		zap.L().Info("checking link routes from prevResult")
+		routes, err := link.Routes()
+		if err != nil {
+			return fmt.Errorf("check link %s: %w", link, err)
+		}
+		for _, route := range prevResult.Routes {
+			dst := route.Dst
+			if !slices.ContainsFunc(routes, func(r *net.IPNet) bool {
+				return r.String() == dst.String()
+			}) {
+				return fmt.Errorf("check link %s: route %s not found", link, dst.String())
+			}
 		}
 	}
 

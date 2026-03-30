@@ -314,6 +314,47 @@ var _ = Describe("Check", func() {
 		Expect(err.Error()).To(ContainSubstring("invalid configuration"))
 	})
 
+	It("returns error when prevResult is nil", func() {
+		conf, _ := newTestConfig()
+		mgr := &fakeLinkManager{}
+
+		err := wireguard.Check(mgr, conf, ifName, nil)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("missing prevResult"))
+	})
+
+	It("returns error when interface is not found in prevResult", func() {
+		conf, _ := newTestConfig()
+		link := &fakeLink{}
+		mgr := &fakeLinkManager{getLink: link}
+		prevResult := &current.Result{
+			CNIVersion: "1.0.0",
+			Interfaces: []*current.Interface{{Name: "other0"}},
+		}
+
+		err := wireguard.Check(mgr, conf, ifName, prevResult)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("not found in prevResult"))
+	})
+
+	It("returns error when no IPs from prevResult match the interface", func() {
+		conf, _ := newTestConfig()
+		_, addr, _ := net.ParseCIDR(conf.RuntimeConfig.IPs[0])
+		ip, _, _ := net.ParseCIDR(conf.RuntimeConfig.IPs[0])
+		addr.IP = ip
+		link := &fakeLink{addresses: []*net.IPNet{addr}}
+		mgr := &fakeLinkManager{getLink: link}
+		prevResult := &current.Result{
+			CNIVersion: "1.0.0",
+			Interfaces: []*current.Interface{{Name: ifName}},
+			IPs:        []*current.IPConfig{},
+		}
+
+		err := wireguard.Check(mgr, conf, ifName, prevResult)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("no IPs from prevResult matched"))
+	})
+
 	It("returns error when Get fails", func() {
 		conf, _ := newTestConfig()
 		mgr := &fakeLinkManager{getErr: errors.New("get failed")}

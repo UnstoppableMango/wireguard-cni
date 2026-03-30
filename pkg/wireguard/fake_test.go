@@ -65,6 +65,9 @@ func (f *fakeLink) Routes() ([]*net.IPNet, error) {
 }
 
 func (f *fakeLink) String() string {
+	if f.assignedAddr == nil || f.assignedAddr.IP == nil {
+		return "fake(<unassigned>)"
+	}
 	return fmt.Sprintf("fake(%s)", f.assignedAddr.IP)
 }
 
