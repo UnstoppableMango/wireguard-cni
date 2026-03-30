@@ -97,7 +97,7 @@ var _ = Describe("Add", func() {
 
 		err := wireguard.Add(mgr, conf)
 		Expect(err).To(HaveOccurred())
-		Expect(err).To(MatchError("add link: unexpected error"))
+		Expect(err).To(MatchError("get link: unexpected error"))
 	})
 
 	It("returns error when Create fails", func() {
@@ -109,7 +109,7 @@ var _ = Describe("Add", func() {
 
 		err := wireguard.Add(mgr, conf)
 		Expect(err).To(HaveOccurred())
-		Expect(err).To(MatchError("add link: create failed"))
+		Expect(err).To(MatchError("create link: create failed"))
 	})
 
 	It("deletes the link when setup fails after create", func() {

@@ -20,27 +20,27 @@ func Add(mgr network.LinkManager, conf *config.Config) error {
 	zap.L().Info("looking up wireguard link")
 	link, err := mgr.Get()
 	if err != nil && !network.IsNotFound(err) {
-		return fmt.Errorf("add link: %w", err)
+		return fmt.Errorf("get link: %w", err)
 	}
 
 	if err == nil {
 		// Interface already exists — reconfigure it.
 		zap.L().Info("reconfiguring existing wireguard link")
 		if err := reconfigure(link, addr, wg); err != nil {
-			return fmt.Errorf("add link %s: %w", link, err)
+			return fmt.Errorf("reconfigure link %s: %w", link, err)
 		}
 	} else {
 		// Interface not found — create and set up fresh.
 		zap.L().Info("creating wireguard link")
 		link, err = mgr.Create()
 		if err != nil {
-			return fmt.Errorf("add link: %w", err)
+			return fmt.Errorf("create link: %w", err)
 		}
 
 		zap.L().Info("configuring wireguard link")
 		if err := setup(link, addr, wg); err != nil {
 			_ = mgr.Delete()
-			return fmt.Errorf("add link %s: %w", link, err)
+			return fmt.Errorf("setup link %s: %w", link, err)
 		}
 	}
 
@@ -88,26 +88,7 @@ func setup(link network.Link, addr *net.IPNet, conf *wgtypes.Config) error {
 	if err := link.AssignAddress(addr); err != nil {
 		return fmt.Errorf("assign address %v: %w", addr, err)
 	}
-
-	zap.L().Info("applying wireguard configuration")
-	if err := link.ConfigureWireGuard(*conf); err != nil {
-		return fmt.Errorf("configure device %v: %w", link, err)
-	}
-
-	zap.L().Info("bringing link up")
-	if err := link.BringUp(); err != nil {
-		return fmt.Errorf("set link up: %w", err)
-	}
-
-	for _, peer := range conf.Peers {
-		for _, ip := range peer.AllowedIPs {
-			zap.L().Info("adding route", zap.String("dst", ip.String()))
-			if err := link.AddRoute(new(ip)); err != nil {
-				return fmt.Errorf("add route %v: %w", ip, err)
-			}
-		}
-	}
-	return nil
+	return applyConfig(link, conf)
 }
 
 // reconfigure applies the desired configuration to an existing WireGuard link.
@@ -130,6 +111,12 @@ func reconfigure(link network.Link, addr *net.IPNet, conf *wgtypes.Config) error
 		}
 	}
 
+	return applyConfig(link, conf)
+}
+
+// applyConfig configures the WireGuard device, brings the link up, and installs
+// per-peer routes. It is shared by setup (fresh interface) and reconfigure (existing).
+func applyConfig(link network.Link, conf *wgtypes.Config) error {
 	zap.L().Info("applying wireguard configuration")
 	if err := link.ConfigureWireGuard(*conf); err != nil {
 		return fmt.Errorf("configure device %v: %w", link, err)
