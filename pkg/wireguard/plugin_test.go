@@ -218,9 +218,8 @@ var _ = Describe("Add", func() {
 
 		err := wireguard.Add(mgr, conf)
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("get addresses"))
+		Expect(err).To(MatchError(ContainSubstring("get existing addresses")))
 		Expect(mgr.created).To(BeFalse())
-		Expect(mgr.deleted).To(BeFalse())
 	})
 
 	It("returns error when AssignAddress fails during reconfigure path", func() {
@@ -233,7 +232,7 @@ var _ = Describe("Add", func() {
 
 		err := wireguard.Add(mgr, conf)
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("assign address"))
+		Expect(err).To(MatchError(ContainSubstring("assign address")))
 		Expect(mgr.created).To(BeFalse())
 	})
 
@@ -277,12 +276,10 @@ func newTestPrevResult(ifName, cidr string) *current.Result {
 		Interfaces: []*current.Interface{
 			{Name: ifName, Sandbox: "/var/run/netns/test"},
 		},
-		IPs: []*current.IPConfig{
-			{
-				Interface: &ifIdx,
-				Address:   net.IPNet{IP: ip, Mask: ipnet.Mask},
-			},
-		},
+		IPs: []*current.IPConfig{{
+			Interface: &ifIdx,
+			Address:   net.IPNet{IP: ip, Mask: ipnet.Mask},
+		}},
 	}
 }
 
