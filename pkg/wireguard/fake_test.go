@@ -23,6 +23,8 @@ type fakeLink struct {
 	addresses             []*net.IPNet
 	publicKeyErr          error
 	publicKey             wgtypes.Key
+	routesErr             error
+	routes                []*net.IPNet
 
 	assignedAddr   *net.IPNet
 	configuredConf *wgtypes.Config
@@ -58,7 +60,14 @@ func (f *fakeLink) PublicKey() (wgtypes.Key, error) {
 	return f.publicKey, f.publicKeyErr
 }
 
+func (f *fakeLink) Routes() ([]*net.IPNet, error) {
+	return f.routes, f.routesErr
+}
+
 func (f *fakeLink) String() string {
+	if f.assignedAddr == nil || f.assignedAddr.IP == nil {
+		return "fake(<unassigned>)"
+	}
 	return fmt.Sprintf("fake(%s)", f.assignedAddr.IP)
 }
 

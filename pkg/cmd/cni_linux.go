@@ -4,8 +4,10 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/containernetworking/cni/pkg/skel"
+	current "github.com/containernetworking/cni/pkg/types/100"
 	"github.com/containernetworking/cni/pkg/version"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/unstoppablemango/wireguard-cni/pkg/config"
@@ -55,7 +57,12 @@ func Check(args *skel.CmdArgs) error {
 		return ErrPrevResult
 	}
 
+	prev, err := current.GetResult(conf.PrevResult)
+	if err != nil {
+		return fmt.Errorf("get prevResult: %w", err)
+	}
+
 	return ns.WithNetNSPath(args.Netns, func(ns.NetNS) error {
-		return wireguard.Check(network.New(args.IfName), conf)
+		return wireguard.Check(network.New(args.IfName), conf, args.IfName, prev)
 	})
 }

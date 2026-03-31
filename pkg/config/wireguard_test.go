@@ -82,14 +82,16 @@ var _ = Describe("Wireguard", func() {
 		Expect(err).To(MatchError(ContainSubstring("invalid runtimeConfig.ips[0]")))
 	})
 
-	It("uses only the first IP when multiple are provided", func() {
+	It("returns all IPs when multiple are provided", func() {
 		key, err := wgtypes.GeneratePrivateKey()
 		Expect(err).NotTo(HaveOccurred())
 		conf := configWithIPs("10.0.0.1/24", "10.0.0.2/24")
 		conf.PrivateKey = key.String()
 
-		addr, _, err := conf.Wireguard()
+		addrs, _, err := conf.Wireguard()
 		Expect(err).NotTo(HaveOccurred())
-		Expect(addr.IP.String()).To(Equal("10.0.0.1"))
+		Expect(addrs).To(HaveLen(2))
+		Expect(addrs[0].IP.String()).To(Equal("10.0.0.1"))
+		Expect(addrs[1].IP.String()).To(Equal("10.0.0.2"))
 	})
 })

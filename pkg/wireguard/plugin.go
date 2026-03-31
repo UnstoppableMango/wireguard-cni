@@ -5,6 +5,7 @@ import (
 	"net"
 	"slices"
 
+	current "github.com/containernetworking/cni/pkg/types/100"
 	"github.com/unstoppablemango/wireguard-cni/pkg/config"
 	"github.com/unstoppablemango/wireguard-cni/pkg/network"
 	"go.uber.org/zap"
@@ -12,7 +13,7 @@ import (
 )
 
 func Add(mgr network.LinkManager, conf *config.Config) error {
-	addr, wg, err := conf.Wireguard()
+	addrs, wg, err := conf.Wireguard()
 	if err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
@@ -23,53 +24,97 @@ func Add(mgr network.LinkManager, conf *config.Config) error {
 		return fmt.Errorf("get link: %w", err)
 	}
 
-	if err == nil {
-		// Interface already exists — reconfigure it.
-		zap.L().Info("reconfiguring existing wireguard link")
-		if err := reconfigure(link, addr, wg); err != nil {
-			return fmt.Errorf("reconfigure link %s: %w", link, err)
-		}
-	} else {
-		// Interface not found — create and set up fresh.
+	if err != nil {
 		zap.L().Info("creating wireguard link")
 		link, err = mgr.Create()
 		if err != nil {
 			return fmt.Errorf("create link: %w", err)
 		}
+	}
 
-		zap.L().Info("configuring wireguard link")
-		if err := setup(link, addr, wg); err != nil {
-			_ = mgr.Delete()
-			return fmt.Errorf("setup link %s: %w", link, err)
-		}
+	zap.L().Info("configuring wireguard link")
+	if err := setup(link, addrs, wg); err != nil {
+		_ = mgr.Delete()
+		return fmt.Errorf("setup link %s: %w", link, err)
 	}
 
 	zap.L().Info("wireguard link ready")
 	return nil
 }
 
-// Check verifies that the WireGuard interface exists, has the configured address,
-// and that the device public key matches the configured private key.
+// Check verifies that the WireGuard interface exists, that all IPs and routes
+// from prevResult are still present in the live network namespace, and that the
+// device public key matches the configured private key.
 // Must be called from within an ns.Do() closure.
-func Check(mgr network.LinkManager, conf *config.Config) error {
-	addr, wg, err := conf.Wireguard()
+func Check(mgr network.LinkManager, conf *config.Config, ifName string, prevResult *current.Result) error {
+	_, wg, err := conf.Wireguard()
 	if err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
+	}
+	if prevResult == nil {
+		return fmt.Errorf("check: missing prevResult")
 	}
 	link, err := mgr.Get()
 	if err != nil {
 		return fmt.Errorf("check link: %w", err)
 	}
 
-	zap.L().Info("checking link address", zap.String("expected", addr.String()))
+	// Find our interface index in prevResult.
+	ifIdx := -1
+	for i, iface := range prevResult.Interfaces {
+		if iface.Name == ifName {
+			ifIdx = i
+			break
+		}
+	}
+	if ifIdx == -1 {
+		return fmt.Errorf("check link %s: interface %s not found in prevResult", link, ifName)
+	}
+
+	// Verify IPs from prevResult are assigned.
+	zap.L().Info("checking link addresses from prevResult")
 	addrs, err := link.Addresses()
 	if err != nil {
 		return fmt.Errorf("check link %s: %w", link, err)
 	}
-	if !slices.ContainsFunc(addrs, func(a *net.IPNet) bool {
-		return a.String() == addr.String()
-	}) {
-		return fmt.Errorf("check link %s: address %s not found", link, addr)
+	ipValidated := false
+	for _, ipConf := range prevResult.IPs {
+		if ipConf.Interface == nil || *ipConf.Interface != ifIdx {
+			continue
+		}
+		ip := ipConf.Address
+		if !slices.ContainsFunc(addrs, func(a *net.IPNet) bool {
+			return a.String() == ip.String()
+		}) {
+			return fmt.Errorf("check link %s: address %s not found", link, ip.String())
+		}
+		ipValidated = true
+	}
+	if !ipValidated {
+		return fmt.Errorf("check link %s: no IPs from prevResult matched interface %s", link, ifName)
+	}
+
+	// Verify routes this plugin is responsible for (peer AllowedIPs) are installed.
+	// prevResult.Routes is not used here because it may include routes from other
+	// plugins on other interfaces, which would not be present on the WireGuard link.
+	var expectedRoutes []net.IPNet
+	for _, peer := range wg.Peers {
+		expectedRoutes = append(expectedRoutes, peer.AllowedIPs...)
+	}
+	if len(expectedRoutes) > 0 {
+		zap.L().Info("checking link routes from peer AllowedIPs")
+		routes, err := link.Routes()
+		if err != nil {
+			return fmt.Errorf("check link %s: %w", link, err)
+		}
+		for i := range expectedRoutes {
+			dst := &expectedRoutes[i]
+			if !slices.ContainsFunc(routes, func(r *net.IPNet) bool {
+				return r.String() == dst.String()
+			}) {
+				return fmt.Errorf("check link %s: route %s not found", link, dst.String())
+			}
+		}
 	}
 
 	zap.L().Info("checking link public key")
@@ -83,34 +128,24 @@ func Check(mgr network.LinkManager, conf *config.Config) error {
 	return nil
 }
 
-func setup(link network.Link, addr *net.IPNet, conf *wgtypes.Config) error {
-	zap.L().Info("assigning address", zap.String("address", addr.String()))
-	if err := link.AssignAddress(addr); err != nil {
-		return fmt.Errorf("assign address %v: %w", addr, err)
-	}
-	return applyConfig(link, conf)
-}
-
-// reconfigure applies the desired configuration to an existing WireGuard link.
-// Unlike setup, it only assigns the address if not already present, since other
-// plugins in the chain may have already assigned addresses to the interface.
-func reconfigure(link network.Link, addr *net.IPNet, conf *wgtypes.Config) error {
-	zap.L().Info("checking existing addresses")
-	addrs, err := link.Addresses()
+func setup(link network.Link, addrs []*net.IPNet, conf *wgtypes.Config) error {
+	existing, err := link.Addresses()
 	if err != nil {
-		return fmt.Errorf("get addresses %v: %w", link, err)
+		return fmt.Errorf("get existing addresses: %w", err)
 	}
 
-	hasAddr := slices.ContainsFunc(addrs, func(a *net.IPNet) bool {
-		return a.String() == addr.String()
-	})
-	if !hasAddr {
+	for _, addr := range addrs {
+		if slices.ContainsFunc(existing, func(a *net.IPNet) bool {
+			return a.String() == addr.String()
+		}) {
+			continue
+		}
+
 		zap.L().Info("assigning address", zap.String("address", addr.String()))
 		if err := link.AssignAddress(addr); err != nil {
 			return fmt.Errorf("assign address %v: %w", addr, err)
 		}
 	}
-
 	return applyConfig(link, conf)
 }
 

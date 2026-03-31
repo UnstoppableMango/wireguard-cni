@@ -110,3 +110,34 @@ func (l *netlinkLink) Addresses() ([]*net.IPNet, error) {
 	}
 	return result, nil
 }
+
+func (l *netlinkLink) Routes() ([]*net.IPNet, error) {
+	routes, err := netlink.RouteList(l.link, netlink.FAMILY_ALL)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*net.IPNet, 0, len(routes))
+	for _, r := range routes {
+		if r.Dst != nil {
+			result = append(result, r.Dst)
+			continue
+		}
+		// In netlink, a nil Dst represents a default route.
+		// Map to an explicit /0 network based on the route family.
+		var cidr string
+		switch r.Family {
+		case netlink.FAMILY_V4:
+			cidr = "0.0.0.0/0"
+		case netlink.FAMILY_V6:
+			cidr = "::/0"
+		default:
+			continue
+		}
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
+		}
+		result = append(result, ipNet)
+	}
+	return result, nil
+}

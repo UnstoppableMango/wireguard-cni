@@ -8,15 +8,20 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-func (c *Config) Wireguard() (*net.IPNet, *wgtypes.Config, error) {
+func (c *Config) Wireguard() ([]*net.IPNet, *wgtypes.Config, error) {
 	if len(c.RuntimeConfig.IPs) == 0 {
 		return nil, nil, fmt.Errorf("runtimeConfig.ips is required")
 	}
-	ip, addr, err := net.ParseCIDR(c.RuntimeConfig.IPs[0])
-	if err != nil {
-		return nil, nil, fmt.Errorf("invalid runtimeConfig.ips[0]: %w", err)
+
+	var addrs []*net.IPNet
+	for i, ipStr := range c.RuntimeConfig.IPs {
+		ip, addr, err := net.ParseCIDR(ipStr)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid runtimeConfig.ips[%d]: %w", i, err)
+		}
+		addr.IP = ip
+		addrs = append(addrs, addr)
 	}
-	addr.IP = ip
 
 	if c.PrivateKey == "" {
 		return nil, nil, fmt.Errorf("privateKey is required")
@@ -42,7 +47,7 @@ func (c *Config) Wireguard() (*net.IPNet, *wgtypes.Config, error) {
 		wg.Peers = append(wg.Peers, *pc)
 	}
 
-	return addr, &wg, nil
+	return addrs, &wg, nil
 }
 
 func peerConfig(c PeerConfig) (*wgtypes.PeerConfig, error) {

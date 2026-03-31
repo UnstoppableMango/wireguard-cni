@@ -30,6 +30,8 @@ type Link interface {
 	ConfigureWireGuard(conf wgtypes.Config) error
 	// PublicKey returns the public key currently set on the WireGuard device.
 	PublicKey() (wgtypes.Key, error)
+	// Routes returns all routes currently installed via this link.
+	Routes() ([]*net.IPNet, error)
 }
 
 // LinkManager manages a single named network link. The link name is
