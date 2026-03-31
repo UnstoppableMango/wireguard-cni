@@ -94,15 +94,21 @@ func Check(mgr network.LinkManager, conf *config.Config, ifName string, prevResu
 		return fmt.Errorf("check link %s: no IPs from prevResult matched interface %s", link, ifName)
 	}
 
-	// Verify routes from prevResult are installed.
-	if len(prevResult.Routes) > 0 {
-		zap.L().Info("checking link routes from prevResult")
+	// Verify routes this plugin is responsible for (peer AllowedIPs) are installed.
+	// prevResult.Routes is not used here because it may include routes from other
+	// plugins on other interfaces, which would not be present on the WireGuard link.
+	var expectedRoutes []net.IPNet
+	for _, peer := range wg.Peers {
+		expectedRoutes = append(expectedRoutes, peer.AllowedIPs...)
+	}
+	if len(expectedRoutes) > 0 {
+		zap.L().Info("checking link routes from peer AllowedIPs")
 		routes, err := link.Routes()
 		if err != nil {
 			return fmt.Errorf("check link %s: %w", link, err)
 		}
-		for _, route := range prevResult.Routes {
-			dst := route.Dst
+		for i := range expectedRoutes {
+			dst := &expectedRoutes[i]
 			if !slices.ContainsFunc(routes, func(r *net.IPNet) bool {
 				return r.String() == dst.String()
 			}) {
