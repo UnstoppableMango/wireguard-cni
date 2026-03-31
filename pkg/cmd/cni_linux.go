@@ -3,12 +3,10 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/containernetworking/cni/pkg/skel"
 	current "github.com/containernetworking/cni/pkg/types/100"
-	"github.com/containernetworking/cni/pkg/version"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/unstoppablemango/wireguard-cni/pkg/config"
 	"github.com/unstoppablemango/wireguard-cni/pkg/network"
@@ -20,11 +18,6 @@ func Add(args *skel.CmdArgs) error {
 	conf, err := config.Parse(args.StdinData)
 	if err != nil {
 		return err
-	}
-	if conf.PrevResult != nil {
-		if ok, err := version.GreaterThanOrEqualTo(conf.CNIVersion, "0.3.0"); err != nil || !ok {
-			return errors.Join(ErrChainedVersion, err)
-		}
 	}
 
 	if err := ns.WithNetNSPath(args.Netns, func(ns.NetNS) error {

@@ -38,16 +38,11 @@ type Config struct {
 func Parse(stdin []byte) (*Config, error) {
 	var conf Config
 	if err := json.Unmarshal(stdin, &conf); err != nil {
-		return nil, fmt.Errorf("failed to parse network configuration: %w", err)
+		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 	if err := version.ParsePrevResult(&conf.PluginConf); err != nil {
-		return nil, fmt.Errorf("failed to parse prevResult: %w", err)
+		return nil, fmt.Errorf("parse prevResult: %w", err)
 	}
-
-	if len(conf.RuntimeConfig.IPs) == 0 {
-		return nil, fmt.Errorf("runtimeConfig.ips is required but was not provided")
-	}
-
 	return &conf, nil
 }
 

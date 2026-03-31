@@ -8,6 +8,44 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+func parseKey(str string) (*wgtypes.Key, error) {
+	key, err := wgtypes.ParseKey(str)
+	if err != nil {
+		return nil, err
+	}
+	return &key, nil
+}
+
+func WireguardConfig(conf *Config) (*wgtypes.Config, error) {
+	if conf.Peers == nil {
+		return nil, fmt.Errorf("wireguard config missing 'peers' key")
+	}
+	if conf.PrivateKey == "" {
+		return nil, fmt.Errorf("wireguard config missing 'privateKey' key")
+	}
+	key, err := wgtypes.ParseKey(conf.PrivateKey)
+	if err != nil {
+		return nil, fmt.Errorf("privateKey: %w", err)
+	}
+
+	c := &wgtypes.Config{
+		PrivateKey:   &key,
+		ReplacePeers: true,
+	}
+	if conf.ListenPort != 0 {
+		c.ListenPort = &conf.ListenPort
+	}
+
+	for i, p := range conf.Peers {
+		pc, err := peerConfig(p)
+		if err != nil {
+			return nil, fmt.Errorf("peers[%d] %s: %w", i, p.Endpoint, err)
+		}
+		c.Peers = append(c.Peers, *pc)
+	}
+	return c, nil
+}
+
 func (c *Config) Wireguard() ([]*net.IPNet, *wgtypes.Config, error) {
 	if len(c.RuntimeConfig.IPs) == 0 {
 		return nil, nil, fmt.Errorf("runtimeConfig.ips is required")
@@ -17,71 +55,47 @@ func (c *Config) Wireguard() ([]*net.IPNet, *wgtypes.Config, error) {
 	for i, ipStr := range c.RuntimeConfig.IPs {
 		ip, addr, err := net.ParseCIDR(ipStr)
 		if err != nil {
-			return nil, nil, fmt.Errorf("invalid runtimeConfig.ips[%d]: %w", i, err)
+			return nil, nil, fmt.Errorf("runtimeConfig.ips[%d]: %w", i, err)
 		}
 		addr.IP = ip
 		addrs = append(addrs, addr)
 	}
 
-	if c.PrivateKey == "" {
-		return nil, nil, fmt.Errorf("privateKey is required")
-	}
-	key, err := wgtypes.ParseKey(c.PrivateKey)
+	wg, err := WireguardConfig(c)
 	if err != nil {
-		return nil, nil, fmt.Errorf("invalid privateKey: %w", err)
+		return nil, nil, err
 	}
-
-	wg := wgtypes.Config{
-		PrivateKey:   &key,
-		ReplacePeers: true,
-	}
-	if c.ListenPort != 0 {
-		wg.ListenPort = &c.ListenPort
-	}
-
-	for i, p := range c.Peers {
-		pc, err := peerConfig(p)
-		if err != nil {
-			return nil, nil, fmt.Errorf("peer %d: %w", i, err)
-		}
-		wg.Peers = append(wg.Peers, *pc)
-	}
-
-	return addrs, &wg, nil
+	return addrs, wg, nil
 }
 
-func peerConfig(c PeerConfig) (*wgtypes.PeerConfig, error) {
-	if c.PublicKey == "" {
-		return nil, fmt.Errorf("publicKey is required")
+func peerConfig(conf PeerConfig) (*wgtypes.PeerConfig, error) {
+	if conf.PublicKey == "" {
+		return nil, fmt.Errorf("peer config missing 'publicKey' key")
 	}
-	key, err := wgtypes.ParseKey(c.PublicKey)
+	key, err := wgtypes.ParseKey(conf.PublicKey)
 	if err != nil {
-		return nil, fmt.Errorf("invalid publicKey: %w", err)
+		return nil, fmt.Errorf("publicKey: %w", err)
 	}
 
 	pc := wgtypes.PeerConfig{
 		PublicKey:         key,
 		ReplaceAllowedIPs: true,
 	}
-
-	for _, ip := range c.AllowedIPs {
-		_, ipnet, err := net.ParseCIDR(ip)
+	for _, ip := range conf.AllowedIPs {
+		_, cidr, err := net.ParseCIDR(ip)
 		if err != nil {
-			return nil, fmt.Errorf("invalid allowedIP %q: %w", ip, err)
+			return nil, fmt.Errorf("allowedIP %q: %w", ip, err)
 		}
-		pc.AllowedIPs = append(pc.AllowedIPs, *ipnet)
+		pc.AllowedIPs = append(pc.AllowedIPs, *cidr)
 	}
 
-	if c.Endpoint != "" {
-		addr, err := c.ResolveUDPAddr()
-		if err != nil {
+	if conf.Endpoint != "" {
+		if pc.Endpoint, err = net.ResolveUDPAddr("udp", conf.Endpoint); err != nil {
 			return nil, err
 		}
-		pc.Endpoint = addr
 	}
-
-	if c.PersistentKeepalive > 0 {
-		dur := time.Duration(c.PersistentKeepalive) * time.Second
+	if conf.PersistentKeepalive > 0 {
+		dur := time.Duration(conf.PersistentKeepalive) * time.Second
 		pc.PersistentKeepaliveInterval = &dur
 	}
 
