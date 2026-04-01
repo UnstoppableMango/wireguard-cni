@@ -18,21 +18,16 @@ type PeerConfig struct {
 	PersistentKeepalive int      `json:"persistentKeepalive,omitempty"`
 }
 
-func (c *PeerConfig) ResolveUDPAddr() (*net.UDPAddr, error) {
-	if c.Endpoint == "" {
-		return nil, nil
-	}
-	return net.ResolveUDPAddr("udp", c.Endpoint)
+type Runtime struct {
+	IPs []string `json:"ips,omitempty"`
 }
 
 type Config struct {
 	types.PluginConf
-	RuntimeConfig struct {
-		IPs []string `json:"ips,omitempty"`
-	} `json:"runtimeConfig,omitempty"`
-	PrivateKey string       `json:"privateKey"`
-	ListenPort int          `json:"listenPort,omitempty"`
-	Peers      []PeerConfig `json:"peers"`
+	RuntimeConfig Runtime      `json:"runtimeConfig,omitempty"`
+	PrivateKey    string       `json:"privateKey"`
+	ListenPort    int          `json:"listenPort,omitempty"`
+	Peers         []PeerConfig `json:"peers"`
 }
 
 func Parse(stdin []byte) (*Config, error) {

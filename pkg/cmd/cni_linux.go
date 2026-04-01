@@ -20,9 +20,21 @@ func Add(args *skel.CmdArgs) error {
 		return err
 	}
 
-	if err := ns.WithNetNSPath(args.Netns, func(ns.NetNS) error {
-		return wireguard.Add(network.New(args.IfName), conf)
-	}); err != nil {
+	if conf.PrevResult == nil {
+		return fmt.Errorf("must be called as a chained plugin")
+	}
+
+	defer func() {
+		if err != nil {
+			_ = conf.IPAMDel(args.StdinData)
+		}
+	}()
+
+	var ipam *current.Result
+	if ipam, err = conf.IPAMAdd(args.StdinData); err != nil {
+		return err
+	}
+	if err := wireguard.ConfigureAll(ipam.IPs); err != nil {
 		return err
 	}
 

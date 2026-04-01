@@ -12,6 +12,19 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+func Configure(idx int, conf *current.IPConfig) error {
+	return nil
+}
+
+func ConfigureAll(ips []*current.IPConfig) error {
+	for i, ip := range ips {
+		if err := Configure(i, ip); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func Add(mgr network.LinkManager, conf *config.Config) error {
 	addrs, wg, err := conf.Wireguard()
 	if err != nil {
