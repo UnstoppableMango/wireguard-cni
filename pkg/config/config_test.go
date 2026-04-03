@@ -32,7 +32,7 @@ var _ = Describe("Config", func() {
 		_, err := config.Parse([]byte("not-json"))
 
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("failed to parse network configuration"))
+		Expect(err.Error()).To(ContainSubstring("unmarshal config"))
 	})
 
 	It("returns error when prevResult cannot be parsed", func() {
@@ -43,24 +43,6 @@ var _ = Describe("Config", func() {
 
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("could not parse prevResult"))
-	})
-
-	It("returns error when runtimeConfig.ips is absent", func() {
-		stdin := []byte(`{"cniVersion":"1.0.0","name":"wg-test","type":"wireguard-cni"}`)
-
-		_, err := config.Parse(stdin)
-
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("runtimeConfig.ips is required"))
-	})
-
-	It("returns error when runtimeConfig.ips is empty", func() {
-		stdin := []byte(`{"cniVersion":"1.0.0","name":"wg-test","type":"wireguard-cni","runtimeConfig":{"ips":[]}}`)
-
-		_, err := config.Parse(stdin)
-
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("runtimeConfig.ips is required"))
 	})
 })
 

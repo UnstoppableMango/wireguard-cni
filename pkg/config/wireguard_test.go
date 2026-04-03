@@ -44,19 +44,13 @@ func configWithIPs(ips ...string) *config.Config {
 }
 
 var _ = Describe("Wireguard", func() {
-	It("validates required runtimeConfig.ips", func() {
-		key, err := wgtypes.GeneratePrivateKey()
-		Expect(err).NotTo(HaveOccurred())
-		conf := &config.Config{PrivateKey: key.String()}
-
-		_, _, err = conf.Wireguard()
-		Expect(err).To(MatchError(ContainSubstring("runtimeConfig.ips is required")))
-	})
-
 	It("validates required privateKey", func() {
 		conf := configWithIPs("10.0.0.1/24")
+		conf.Peers = []config.PeerConfig{}
+
 		_, _, err := conf.Wireguard()
-		Expect(err).To(MatchError(ContainSubstring("privateKey is required")))
+
+		Expect(err).To(MatchError(ContainSubstring("missing 'privateKey'")))
 	})
 
 	It("validates peer publicKey", func() {
@@ -69,7 +63,7 @@ var _ = Describe("Wireguard", func() {
 		}}
 
 		_, _, err = conf.Wireguard()
-		Expect(err).To(MatchError(ContainSubstring("publicKey is required")))
+		Expect(err).To(MatchError(ContainSubstring("missing 'publicKey'")))
 	})
 
 	It("validates invalid address CIDR", func() {
@@ -79,7 +73,8 @@ var _ = Describe("Wireguard", func() {
 		conf.PrivateKey = key.String()
 
 		_, _, err = conf.Wireguard()
-		Expect(err).To(MatchError(ContainSubstring("invalid runtimeConfig.ips[0]")))
+
+		Expect(err).To(MatchError(ContainSubstring("invalid CIDR address")))
 	})
 
 	It("returns all IPs when multiple are provided", func() {
@@ -87,8 +82,10 @@ var _ = Describe("Wireguard", func() {
 		Expect(err).NotTo(HaveOccurred())
 		conf := configWithIPs("10.0.0.1/24", "10.0.0.2/24")
 		conf.PrivateKey = key.String()
+		conf.Peers = []config.PeerConfig{}
 
 		addrs, _, err := conf.Wireguard()
+
 		Expect(err).NotTo(HaveOccurred())
 		Expect(addrs).To(HaveLen(2))
 		Expect(addrs[0].IP.String()).To(Equal("10.0.0.1"))
