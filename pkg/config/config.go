@@ -9,6 +9,7 @@ import (
 	"github.com/containernetworking/cni/pkg/types"
 	current "github.com/containernetworking/cni/pkg/types/100"
 	"github.com/containernetworking/cni/pkg/version"
+	corev1 "k8s.io/api/core/v1"
 )
 
 type PeerConfig struct {
@@ -25,12 +26,18 @@ func (c *PeerConfig) ResolveUDPAddr() (*net.UDPAddr, error) {
 	return net.ResolveUDPAddr("udp", c.Endpoint)
 }
 
+type SecretKeyRef struct {
+	Namespace                string `json:"namespace"`
+	corev1.SecretKeySelector `json:",inline"`
+}
+
 type Config struct {
 	types.PluginConf
 	RuntimeConfig struct {
 		IPs []string `json:"ips,omitempty"`
 	} `json:"runtimeConfig,omitempty"`
 	PrivateKey string       `json:"privateKey"`
+	PrivateKeyRef *SecretKeyRef `json:"privateKeyRef,omitempty"`
 	ListenPort int          `json:"listenPort,omitempty"`
 	Peers      []PeerConfig `json:"peers"`
 }
