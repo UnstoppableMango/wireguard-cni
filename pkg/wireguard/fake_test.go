@@ -25,11 +25,15 @@ type fakeLink struct {
 	publicKey             wgtypes.Key
 	routesErr             error
 	routes                []*net.IPNet
+	setMACErr             error
+	setBandwidthErr       error
 
 	assignedAddr   *net.IPNet
 	configuredConf *wgtypes.Config
 	addedRoutes    []*net.IPNet
 	assignCalled   bool
+	setMAC         net.HardwareAddr
+	setBandwidthCalled bool
 }
 
 func (f *fakeLink) AssignAddress(addr *net.IPNet) error {
@@ -62,6 +66,16 @@ func (f *fakeLink) PublicKey() (wgtypes.Key, error) {
 
 func (f *fakeLink) Routes() ([]*net.IPNet, error) {
 	return f.routes, f.routesErr
+}
+
+func (f *fakeLink) SetMAC(mac net.HardwareAddr) error {
+	f.setMAC = mac
+	return f.setMACErr
+}
+
+func (f *fakeLink) SetBandwidth(ingressRate, ingressBurst, egressRate, egressBurst uint64) error {
+	f.setBandwidthCalled = true
+	return f.setBandwidthErr
 }
 
 func (f *fakeLink) String() string {

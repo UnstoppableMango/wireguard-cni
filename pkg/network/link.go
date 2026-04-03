@@ -32,6 +32,11 @@ type Link interface {
 	PublicKey() (wgtypes.Key, error)
 	// Routes returns all routes currently installed via this link.
 	Routes() ([]*net.IPNet, error)
+	// SetMAC sets the hardware address of the link.
+	SetMAC(mac net.HardwareAddr) error
+	// SetBandwidth applies ingress and egress rate limits to the link.
+	// Rates are in bits per second; bursts are in bits.
+	SetBandwidth(ingressRate, ingressBurst, egressRate, egressBurst uint64) error
 }
 
 // LinkManager manages a single named network link. The link name is

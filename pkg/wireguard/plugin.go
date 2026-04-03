@@ -18,6 +18,11 @@ func Add(mgr network.LinkManager, conf *config.Config) error {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
+	mac, err := conf.ParseMAC()
+	if err != nil {
+		return fmt.Errorf("invalid configuration: %w", err)
+	}
+
 	zap.L().Info("looking up wireguard link")
 	link, err := mgr.Get()
 	if err != nil && !network.IsNotFound(err) {
@@ -33,9 +38,17 @@ func Add(mgr network.LinkManager, conf *config.Config) error {
 	}
 
 	zap.L().Info("configuring wireguard link")
-	if err := setup(link, addrs, wg); err != nil {
+	if err := setup(link, addrs, wg, mac); err != nil {
 		_ = mgr.Delete()
 		return fmt.Errorf("setup link %s: %w", link, err)
+	}
+
+	if bw := conf.RuntimeConfig.Bandwidth; bw != nil {
+		zap.L().Info("applying bandwidth limits")
+		if err := link.SetBandwidth(bw.IngressRate, bw.IngressBurst, bw.EgressRate, bw.EgressBurst); err != nil {
+			_ = mgr.Delete()
+			return fmt.Errorf("set bandwidth: %w", err)
+		}
 	}
 
 	zap.L().Info("wireguard link ready")
@@ -128,7 +141,7 @@ func Check(mgr network.LinkManager, conf *config.Config, ifName string, prevResu
 	return nil
 }
 
-func setup(link network.Link, addrs []*net.IPNet, conf *wgtypes.Config) error {
+func setup(link network.Link, addrs []*net.IPNet, conf *wgtypes.Config, mac net.HardwareAddr) error {
 	existing, err := link.Addresses()
 	if err != nil {
 		return fmt.Errorf("get existing addresses: %w", err)
@@ -146,15 +159,22 @@ func setup(link network.Link, addrs []*net.IPNet, conf *wgtypes.Config) error {
 			return fmt.Errorf("assign address %v: %w", addr, err)
 		}
 	}
-	return applyConfig(link, conf)
+	return applyConfig(link, conf, mac)
 }
 
 // applyConfig configures the WireGuard device, brings the link up, and installs
 // per-peer routes. It is shared by setup (fresh interface) and reconfigure (existing).
-func applyConfig(link network.Link, conf *wgtypes.Config) error {
+func applyConfig(link network.Link, conf *wgtypes.Config, mac net.HardwareAddr) error {
 	zap.L().Info("applying wireguard configuration")
 	if err := link.ConfigureWireGuard(*conf); err != nil {
 		return fmt.Errorf("configure device %v: %w", link, err)
+	}
+
+	if mac != nil {
+		zap.L().Info("setting MAC address", zap.String("mac", mac.String()))
+		if err := link.SetMAC(mac); err != nil {
+			return fmt.Errorf("set MAC %s: %w", mac.String(), err)
+		}
 	}
 
 	zap.L().Info("bringing link up")
