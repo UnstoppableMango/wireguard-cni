@@ -106,6 +106,7 @@ var _ = Describe("Host interface configuration", func() {
 								"gateway": "10.100.0.1",
 							}},
 						},
+						IPAM: types.IPAM{Type: "static"},
 					},
 					PrivateKey: privKey.String(),
 					Peers: []config.PeerConfig{{
