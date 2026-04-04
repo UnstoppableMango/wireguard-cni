@@ -46,7 +46,7 @@ func configWithIPs(ips ...string) *config.Config {
 var _ = Describe("Wireguard", func() {
 	It("validates required privateKey", func() {
 		conf := configWithIPs("10.0.0.1/24")
-		conf.Peers = []config.PeerConfig{}
+		conf.Peers = []config.Peer{}
 
 		_, _, err := conf.Wireguard()
 
@@ -58,7 +58,7 @@ var _ = Describe("Wireguard", func() {
 		Expect(err).NotTo(HaveOccurred())
 		conf := configWithIPs("10.0.0.1/24")
 		conf.PrivateKey = key.String()
-		conf.Peers = []config.PeerConfig{{
+		conf.Peers = []config.Peer{{
 			AllowedIPs: []string{"0.0.0.0/0"},
 		}}
 
@@ -82,7 +82,7 @@ var _ = Describe("Wireguard", func() {
 		Expect(err).NotTo(HaveOccurred())
 		conf := configWithIPs("10.0.0.1/24", "10.0.0.2/24")
 		conf.PrivateKey = key.String()
-		conf.Peers = []config.PeerConfig{}
+		conf.Peers = []config.Peer{}
 
 		addrs, _, err := conf.Wireguard()
 

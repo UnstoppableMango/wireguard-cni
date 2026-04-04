@@ -68,7 +68,7 @@ func (c *Config) Wireguard() ([]*net.IPNet, *wgtypes.Config, error) {
 	return addrs, wg, nil
 }
 
-func peerConfig(conf PeerConfig) (*wgtypes.PeerConfig, error) {
+func peerConfig(conf Peer) (*wgtypes.PeerConfig, error) {
 	if conf.PublicKey == "" {
 		return nil, fmt.Errorf("peer config missing 'publicKey' key")
 	}

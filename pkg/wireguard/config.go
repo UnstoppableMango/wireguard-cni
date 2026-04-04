@@ -47,7 +47,7 @@ func Config(conf *config.Config) (*wgtypes.Config, error) {
 	return c, nil
 }
 
-func peerConfig(cni config.PeerConfig) (*wgtypes.PeerConfig, error) {
+func peerConfig(cni config.Peer) (*wgtypes.PeerConfig, error) {
 	if cni.PublicKey == "" {
 		return nil, fmt.Errorf("peer config missing 'publicKey' key")
 	}

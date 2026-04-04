@@ -11,7 +11,7 @@ import (
 	"github.com/containernetworking/cni/pkg/version"
 )
 
-type PeerConfig struct {
+type Peer struct {
 	PublicKey           string   `json:"publicKey"`
 	Endpoint            string   `json:"endpoint,omitempty"`
 	AllowedIPs          []string `json:"allowedIPs"`
@@ -24,10 +24,10 @@ type Runtime struct {
 
 type Config struct {
 	types.PluginConf
-	RuntimeConfig Runtime      `json:"runtimeConfig,omitempty"`
-	PrivateKey    string       `json:"privateKey"`
-	ListenPort    int          `json:"listenPort,omitempty"`
-	Peers         []PeerConfig `json:"peers"`
+	RuntimeConfig Runtime `json:"runtimeConfig,omitempty"`
+	PrivateKey    string  `json:"privateKey"`
+	ListenPort    int     `json:"listenPort,omitempty"`
+	Peers         []Peer  `json:"peers"`
 }
 
 func Parse(stdin []byte) (*Config, error) {

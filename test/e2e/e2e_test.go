@@ -109,7 +109,7 @@ var _ = Describe("Host interface configuration", func() {
 						IPAM: types.IPAM{Type: "static"},
 					},
 					PrivateKey: privKey.String(),
-					Peers: []config.PeerConfig{{
+					Peers: []config.Peer{{
 						PublicKey:  peerKey.PublicKey().String(),
 						AllowedIPs: []string{"10.0.0.0/8"},
 					}},
@@ -315,7 +315,7 @@ var _ = Describe("Wireguard tunnel traffic", func() {
 						},
 					},
 					PrivateKey: serverKey.String(),
-					Peers: []config.PeerConfig{{
+					Peers: []config.Peer{{
 						PublicKey:           clientKey.PublicKey().String(),
 						AllowedIPs:          []string{"10.99.0.1/32"},
 						Endpoint:            "10.200.0.2:51820",

@@ -21,7 +21,7 @@ func newTestConfig() (*config.Config, wgtypes.Key) {
 
 	conf := &config.Config{
 		PrivateKey: privKey.String(),
-		Peers: []config.PeerConfig{{
+		Peers: []config.Peer{{
 			PublicKey:  peerKey.PublicKey().String(),
 			AllowedIPs: []string{"10.1.0.0/24"},
 		}},
@@ -187,7 +187,7 @@ var _ = Describe("Add", func() {
 		Expect(err).NotTo(HaveOccurred())
 		conf := &config.Config{
 			PrivateKey: privKey.String(),
-			Peers: []config.PeerConfig{
+			Peers: []config.Peer{
 				{
 					PublicKey:  peer1Key.PublicKey().String(),
 					AllowedIPs: []string{"10.1.0.0/24", "10.2.0.0/24"},
@@ -244,7 +244,7 @@ var _ = Describe("Add", func() {
 		Expect(err).NotTo(HaveOccurred())
 		conf := &config.Config{
 			PrivateKey: privKey.String(),
-			Peers: []config.PeerConfig{
+			Peers: []config.Peer{
 				{
 					PublicKey:  peer1Key.PublicKey().String(),
 					AllowedIPs: []string{"10.1.0.0/24", "10.2.0.0/24"},
@@ -447,7 +447,7 @@ var _ = Describe("Check", func() {
 		Expect(err).NotTo(HaveOccurred())
 		conf := &config.Config{
 			PrivateKey: privKey.String(),
-			Peers: []config.PeerConfig{{
+			Peers: []config.Peer{{
 				PublicKey:  peerKey.PublicKey().String(),
 				AllowedIPs: []string{"0.0.0.0/0"},
 			}},
@@ -477,7 +477,7 @@ var _ = Describe("Check", func() {
 		Expect(err).NotTo(HaveOccurred())
 		conf := &config.Config{
 			PrivateKey: privKey.String(),
-			Peers: []config.PeerConfig{{
+			Peers: []config.Peer{{
 				PublicKey:  peerKey.PublicKey().String(),
 				AllowedIPs: []string{"0.0.0.0/0"},
 			}},
