@@ -31,9 +31,11 @@ func Add(args *skel.CmdArgs) error {
 	}()
 
 	var ipam *current.Result
+	logger(args).Info("invoking ipam add")
 	if ipam, err = conf.IPAMAdd(args.StdinData); err != nil {
 		return err
 	}
+	logger(args).Info("configuring interface")
 	if err := wireguard.ConfigureAll(ipam.IPs); err != nil {
 		return err
 	}

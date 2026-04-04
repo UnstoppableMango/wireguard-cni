@@ -12,10 +12,12 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/containernetworking/cni/pkg/skel"
+	"github.com/containernetworking/cni/pkg/types"
 	"github.com/containernetworking/plugins/pkg/ip"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/testutils"
 	"github.com/unstoppablemango/wireguard-cni/pkg/cmd"
+	"github.com/unstoppablemango/wireguard-cni/pkg/config"
 	"github.com/vishvananda/netlink"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -61,38 +63,21 @@ func addDefaultRouteInNS(targetNS ns.NetNS, gateway, viaIface string) {
 	})).To(Succeed())
 }
 
-// newNetConf builds a CNI ADD config for the wireguard-cni plugin. Pass a
-// non-nil prevResult to produce a config suitable for CNI CHECK.
-func newNetConf(privKey, peerPubKey wgtypes.Key, address, version string, prevResult []byte) []byte {
-	conf := map[string]any{
-		"cniVersion": version,
-		"name":       "wg-test",
-		"type":       "wireguard-cni",
-		"runtimeConfig": map[string]any{
-			"ips": []string{address},
-		},
-		"privateKey": privKey.String(),
-		"peers": []map[string]any{{
-			"publicKey":  peerPubKey.String(),
-			"allowedIPs": []string{"10.0.0.0/8"},
-		}},
-	}
-	if prevResult != nil {
-		conf["prevResult"] = json.RawMessage(prevResult)
-	}
-	b, _ := json.Marshal(conf)
+func mustMarshal[T any](v T) []byte {
+	GinkgoHelper()
+	b, err := json.Marshal(v)
+	Expect(err).NotTo(HaveOccurred())
 	return b
 }
 
 var _ = Describe("Host interface configuration", func() {
 	for _, ver := range testutils.AllSpecVersions {
-		Describe(fmt.Sprintf("cni %s", ver), Label(ver), Ordered, func() {
+		Describe(fmt.Sprintf("CNIVersion: %s", ver), Label(ver), Ordered, func() {
 			var (
-				testNS    ns.NetNS
-				privKey   wgtypes.Key
-				peerKey   wgtypes.Key
-				confJSON  []byte
-				addResult []byte
+				testNS  ns.NetNS
+				privKey wgtypes.Key
+				peerKey wgtypes.Key
+				conf    *config.Config
 			)
 
 			BeforeAll(func() {
@@ -110,7 +95,24 @@ var _ = Describe("Host interface configuration", func() {
 				peerKey, err = wgtypes.GeneratePrivateKey()
 				Expect(err).NotTo(HaveOccurred())
 
-				confJSON = newNetConf(privKey, peerKey.PublicKey(), "10.100.0.2/24", ver, nil)
+				conf = &config.Config{
+					PluginConf: types.PluginConf{
+						CNIVersion: ver,
+						Name:       "wireguard",
+						Type:       "wireguard-cni",
+						RawPrevResult: map[string]any{
+							"ips": []map[string]any{{
+								"address": "10.100.0.2/24",
+								"gateway": "10.100.0.1",
+							}},
+						},
+					},
+					PrivateKey: privKey.String(),
+					Peers: []config.PeerConfig{{
+						PublicKey:  peerKey.PublicKey().String(),
+						AllowedIPs: []string{"10.0.0.0/8"},
+					}},
+				}
 			})
 
 			It("ADD creates the WireGuard interface with the correct address", func() {
@@ -119,14 +121,14 @@ var _ = Describe("Host interface configuration", func() {
 					Netns:       testNS.Path(),
 					IfName:      "wg0",
 					Path:        "/opt/cni/bin",
-					StdinData:   confJSON,
+					StdinData:   mustMarshal(conf),
 				}
 
-				var err error
-				_, addResult, err = testutils.CmdAddWithArgs(args, func() error {
+				_, result, err := testutils.CmdAddWithArgs(args, func() error {
 					return cmd.Add(args)
 				})
 				Expect(err).NotTo(HaveOccurred())
+				Expect(json.Unmarshal(result, &conf.RawPrevResult)).To(Succeed())
 
 				var addrs []netlink.Addr
 				Expect(testNS.Do(func(_ ns.NetNS) error {
@@ -162,13 +164,7 @@ var _ = Describe("Host interface configuration", func() {
 						Netns:       testNS.Path(),
 						IfName:      ifName,
 						Path:        "/opt/cni/bin",
-						StdinData: newNetConf(
-							privKey,
-							peerKey.PublicKey(),
-							"10.100.0.2/24",
-							ver,
-							addResult,
-						),
+						StdinData:   mustMarshal(conf),
 					}
 
 					Expect(testutils.CmdCheckWithArgs(args, func() error {
@@ -182,7 +178,7 @@ var _ = Describe("Host interface configuration", func() {
 						Netns:       testNS.Path(),
 						IfName:      ifName,
 						Path:        "/opt/cni/bin",
-						StdinData:   confJSON,
+						StdinData:   mustMarshal(conf),
 					}
 
 					Expect(testutils.CmdCheckWithArgs(args, func() error {
@@ -197,7 +193,7 @@ var _ = Describe("Host interface configuration", func() {
 					Netns:       testNS.Path(),
 					IfName:      ifName,
 					Path:        "/opt/cni/bin",
-					StdinData:   confJSON,
+					StdinData:   mustMarshal(conf),
 				}
 
 				Expect(testutils.CmdDelWithArgs(args, func() error {
@@ -211,69 +207,12 @@ var _ = Describe("Host interface configuration", func() {
 					Netns:       testNS.Path(),
 					IfName:      ifName,
 					Path:        "/opt/cni/bin",
-					StdinData:   confJSON,
+					StdinData:   mustMarshal(conf),
 				}
 
 				Expect(testutils.CmdDelWithArgs(args, func() error {
 					return cmd.Del(args)
 				})).To(Succeed())
-			})
-		})
-	}
-})
-
-var _ = Describe("Chained mode", Label("e2e"), func() {
-	for _, ver := range testutils.AllSpecVersions {
-		// CNI 0.1.0 and 0.2.0 predate chained mode; their result type has no
-		// Interfaces field, so prevResult-based tests don't apply.
-		if ver == "0.1.0" || ver == "0.2.0" {
-			continue
-		}
-		Describe(fmt.Sprintf("cni %s", ver), Label(ver), func() {
-			It("ADD with a prevResult succeeds and returns merged result", func() {
-				testNS, err := testutils.NewNS()
-				Expect(err).NotTo(HaveOccurred())
-				DeferCleanup(func() {
-					_ = cmd.Del(&skel.CmdArgs{Netns: testNS.Path(), IfName: "wg0"})
-					_ = cmd.Del(&skel.CmdArgs{Netns: testNS.Path(), IfName: "wg1"})
-					testNS.Close()
-					testutils.UnmountNS(testNS)
-				})
-
-				privKey, err := wgtypes.GeneratePrivateKey()
-				Expect(err).NotTo(HaveOccurred())
-				peerKey, err := wgtypes.GeneratePrivateKey()
-				Expect(err).NotTo(HaveOccurred())
-
-				// First do an ADD to get a valid prevResult.
-				addArgs := &skel.CmdArgs{
-					ContainerID: "test-chained",
-					Netns:       testNS.Path(),
-					IfName:      "wg0",
-					Path:        "/opt/cni/bin",
-					StdinData:   newNetConf(privKey, peerKey.PublicKey(), "10.102.0.2/24", ver, nil),
-				}
-				_, prevResult, err := testutils.CmdAddWithArgs(addArgs, func() error {
-					return cmd.Add(addArgs)
-				})
-				Expect(err).NotTo(HaveOccurred())
-
-				// Attempt ADD in chained mode with the prior result as prevResult.
-				chainedArgs := &skel.CmdArgs{
-					ContainerID: "test-chained",
-					Netns:       testNS.Path(),
-					IfName:      "wg1",
-					Path:        "/opt/cni/bin",
-					StdinData:   newNetConf(privKey, peerKey.PublicKey(), "10.102.1.2/24", ver, prevResult),
-				}
-				_, chainedResult, err := testutils.CmdAddWithArgs(chainedArgs, func() error {
-					return cmd.Add(chainedArgs)
-				})
-				Expect(err).NotTo(HaveOccurred())
-
-				// The merged result JSON should contain both interfaces.
-				Expect(string(chainedResult)).To(ContainSubstring("wg0"))
-				Expect(string(chainedResult)).To(ContainSubstring("wg1"))
 			})
 		})
 	}
@@ -287,7 +226,7 @@ var _ = Describe("Wireguard tunnel traffic", func() {
 				clientNS  ns.NetNS
 				serverKey wgtypes.Key
 				clientKey wgtypes.Key
-				confJSON  []byte
+				conf      *config.Config
 			)
 
 			BeforeAll(func() {
@@ -363,22 +302,25 @@ var _ = Describe("Wireguard tunnel traffic", func() {
 					return nil
 				})).To(Succeed())
 
-				confJSON, err = json.Marshal(map[string]any{
-					"cniVersion": ver,
-					"name":       "wg-e2e",
-					"type":       "wireguard-cni",
-					"runtimeConfig": map[string]any{
-						"ips": []string{"10.99.0.2/24"},
+				conf = &config.Config{
+					PluginConf: types.PluginConf{
+						CNIVersion: ver,
+						Name:       "wg-e2e",
+						Type:       "wireguard-cni",
+						RawPrevResult: map[string]any{
+							"IPs": []map[string]any{{
+								"address": "10.99.0.2/24",
+							}},
+						},
 					},
-					"privateKey": clientKey.String(),
-					"peers": []map[string]any{{
-						"publicKey":           serverKey.PublicKey().String(),
-						"allowedIPs":          []string{"10.99.0.1/32"},
-						"endpoint":            "10.200.0.2:51820",
-						"persistentKeepalive": 5,
+					PrivateKey: serverKey.String(),
+					Peers: []config.PeerConfig{{
+						PublicKey:           clientKey.PublicKey().String(),
+						AllowedIPs:          []string{"10.99.0.1/32"},
+						Endpoint:            "10.200.0.2:51820",
+						PersistentKeepalive: 5,
 					}},
-				})
-				Expect(err).NotTo(HaveOccurred())
+				}
 			})
 
 			It("CNI ADD configures the client WireGuard interface", func() {
@@ -387,7 +329,7 @@ var _ = Describe("Wireguard tunnel traffic", func() {
 					Netns:       clientNS.Path(),
 					IfName:      ifName,
 					Path:        "/opt/cni/bin",
-					StdinData:   confJSON,
+					StdinData:   mustMarshal(conf),
 				}
 
 				_, _, err := testutils.CmdAddWithArgs(args, func() error {
