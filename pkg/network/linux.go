@@ -23,7 +23,7 @@ func (m netlinkManager) Name() string {
 }
 
 func (m netlinkManager) Create() (Link, error) {
-	if err := netlink.LinkAdd(m.newLink()); err != nil {
+	if err := netlink.LinkAdd(newLink(m.Name())); err != nil {
 		return nil, err
 	}
 
@@ -37,9 +37,9 @@ func (m netlinkManager) Create() (Link, error) {
 	}
 }
 
-func (m netlinkManager) newLink() netlink.Link {
+func newLink(name string) netlink.Link {
 	la := netlink.NewLinkAttrs()
-	la.Name = m.Name()
+	la.Name = name
 	return &netlink.Wireguard{LinkAttrs: la}
 }
 
