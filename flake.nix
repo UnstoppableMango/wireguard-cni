@@ -48,6 +48,8 @@
 
           devShells.default = pkgs.mkShellNoCC {
             packages = with pkgs; [
+              cni
+              cni-plugins
               ginkgo
               gnumake
               gopkg
@@ -57,6 +59,7 @@
               nixfmt
               podman
               skopeo
+              wireguard-tools
             ];
 
             GINKGO = "${pkgs.ginkgo}/bin/ginkgo";
