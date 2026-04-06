@@ -7,7 +7,6 @@ import (
 
 	current "github.com/containernetworking/cni/pkg/types/100"
 	"github.com/unstoppablemango/wireguard-cni/pkg/config"
-	"go.uber.org/zap"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -26,7 +25,7 @@ func (cni *CNI) Create(ifName string, ip *current.IPConfig) error {
 	return c.ConfigureDevice(ifName, *conf)
 }
 
-func (cni *CNI) Configure(ip *current.IPConfig, iface *current.Interface) error {
+func (cni *CNI) Configure(ifName string) error {
 	c, err := wgctrl.New()
 	if err != nil {
 		return fmt.Errorf("new wgctrl: %w", err)
@@ -37,24 +36,7 @@ func (cni *CNI) Configure(ip *current.IPConfig, iface *current.Interface) error 
 	if err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
-	return c.ConfigureDevice(iface.Name, *conf)
-}
-
-func (cni *CNI) ConfigureAll(ips []*current.IPConfig, ifs []*current.Interface) error {
-	for _, ip := range ips {
-		if ip.Interface == nil {
-			cni.log.Debug("skipping ip config without interface",
-				zap.Stringer("ip", ip),
-			)
-			continue
-		}
-
-		iface := ifs[*ip.Interface]
-		if err := cni.Configure(ip, iface); err != nil {
-			return err
-		}
-	}
-	return nil
+	return c.ConfigureDevice(ifName, *conf)
 }
 
 func Config(conf *config.Config) (*wgtypes.Config, error) {
@@ -93,7 +75,7 @@ func peerConfig(cni config.Peer) (*wgtypes.PeerConfig, error) {
 	}
 	key, err := wgtypes.ParseKey(cni.PublicKey)
 	if err != nil {
-		return nil, fmt.Errorf("publicKey: %w", err)
+		return nil, fmt.Errorf("parse publicKey: %w", err)
 	}
 
 	wg := wgtypes.PeerConfig{
@@ -103,14 +85,14 @@ func peerConfig(cni config.Peer) (*wgtypes.PeerConfig, error) {
 	for _, ip := range cni.AllowedIPs {
 		_, cidr, err := net.ParseCIDR(ip)
 		if err != nil {
-			return nil, fmt.Errorf("allowedIP %q: %w", ip, err)
+			return nil, fmt.Errorf("parse allowedIP %q: %w", ip, err)
 		}
 		wg.AllowedIPs = append(wg.AllowedIPs, *cidr)
 	}
 
 	if cni.Endpoint != "" {
 		if wg.Endpoint, err = net.ResolveUDPAddr("udp", cni.Endpoint); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("resolve addr %q: %w", cni.Endpoint, err)
 		}
 	}
 	if cni.PersistentKeepalive > 0 {

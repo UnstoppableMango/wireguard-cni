@@ -15,9 +15,7 @@ func Add(args *skel.CmdArgs) error {
 	if err != nil {
 		return fmt.Errorf("new cni: %w", err)
 	}
-	return ns.WithNetNSPath(args.Netns, func(ns.NetNS) error {
-		return cni.Add(args.IfName, args.StdinData)
-	})
+	return cni.Add(args.Netns, args.IfName)
 }
 
 func Check(args *skel.CmdArgs) error {
