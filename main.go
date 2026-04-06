@@ -31,6 +31,6 @@ func main() {
 			Check: cmd.Check,
 		},
 		version.All,
-		bv.BuildString(cmd.Name),
+		bv.BuildString("wireguard-cni"),
 	)
 }
