@@ -86,28 +86,9 @@ func (cni *CNI) Add(netNs, ifName string) error {
 		Mac:     link.Mac().String(),
 	})
 
-	for _, ip := range result.IPs {
-		log.Info("assigning address", zap.Stringer("addr", &ip.Address))
-		if err := AssignAddr(link, ip); err != nil {
-			return fmt.Errorf("assign addr: %w", err)
-		}
-	}
-
-	log.Info("bringing link up")
-	if err := link.SetUp(); err != nil {
-		return fmt.Errorf("set up: %w", err)
-	}
-
-	for _, peer := range cni.conf.Peers {
-		log := log.With(zap.String("peer", peer.Endpoint))
-		for _, ip := range peer.AllowedIPs {
-			log.Debug("adding route", zap.String("ip", ip))
-			route, err := AddRoute(link, ip)
-			if err != nil {
-				return fmt.Errorf("add route: %w", err)
-			}
-			result.Routes = append(result.Routes, route)
-		}
+	log.Info("applying configuration")
+	if err := Apply(link, cni.conf, result); err != nil {
+		return fmt.Errorf("apply: %w", err)
 	}
 	return types.PrintResult(result, cni.conf.CNIVersion)
 }
@@ -129,6 +110,29 @@ func AddRoute(link iface.Link, dst string) (*types.Route, error) {
 		Dst:   route.Dst(),
 		Scope: new(route.Scope()),
 	}, nil
+}
+
+func Apply(link iface.Link, conf *config.Config, result *current.Result) error {
+	for _, ip := range result.IPs {
+		if err := AssignAddr(link, ip); err != nil {
+			return fmt.Errorf("assign addr: %w", err)
+		}
+	}
+
+	if err := link.SetUp(); err != nil {
+		return fmt.Errorf("set up: %w", err)
+	}
+
+	for _, peer := range conf.Peers {
+		for _, ip := range peer.AllowedIPs {
+			route, err := AddRoute(link, ip)
+			if err != nil {
+				return fmt.Errorf("add route: %w", err)
+			}
+			result.Routes = append(result.Routes, route)
+		}
+	}
+	return nil
 }
 
 func AssignAddr(link iface.Link, ip *current.IPConfig) error {
