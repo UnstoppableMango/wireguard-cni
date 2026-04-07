@@ -5,41 +5,11 @@ import (
 	"net"
 	"time"
 
-	current "github.com/containernetworking/cni/pkg/types/100"
 	"github.com/unstoppablemango/wireguard-cni/pkg/config"
-	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-func (cni *CNI) Create(ifName string, ip *current.IPConfig) error {
-	c, err := wgctrl.New()
-	if err != nil {
-		return fmt.Errorf("new wgctrl: %w", err)
-	}
-	defer c.Close()
-
-	conf, err := Config(cni.conf)
-	if err != nil {
-		return fmt.Errorf("invalid configuration: %w", err)
-	}
-	return c.ConfigureDevice(ifName, *conf)
-}
-
-func (cni *CNI) Configure(ifName string) error {
-	c, err := wgctrl.New()
-	if err != nil {
-		return fmt.Errorf("new wgctrl: %w", err)
-	}
-	defer c.Close()
-
-	conf, err := Config(cni.conf)
-	if err != nil {
-		return fmt.Errorf("invalid configuration: %w", err)
-	}
-	return c.ConfigureDevice(ifName, *conf)
-}
-
-func Config(conf *config.Config) (*wgtypes.Config, error) {
+func ConfigFor(conf *config.Config) (*wgtypes.Config, error) {
 	if conf.Peers == nil {
 		return nil, fmt.Errorf("wireguard config missing 'peers' key")
 	}

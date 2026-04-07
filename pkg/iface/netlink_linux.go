@@ -14,7 +14,7 @@ type wgNS struct {
 	h *netlink.Handle
 }
 
-func HandleAt(path string) (NS, error) {
+func NsByPath(path string) (NS, error) {
 	ns, err := netns.GetFromPath(path)
 	if err != nil {
 		return nil, err
@@ -84,6 +84,7 @@ func (l *wgLink) AddRoute(route string) (Route, error) {
 
 func (l *wgLink) Routes() ([]Route, error) {
 	var result []Route
+	// TODO: verify this works the way I think it does
 	err := l.h.RouteListFilteredIter(
 		netlink.FAMILY_ALL,
 		&netlink.Route{LinkIndex: l.Index()},
@@ -143,4 +144,18 @@ func (r wgRoute) Dst() net.IPNet {
 
 func (r wgRoute) Scope() int {
 	return int(r.r.Scope)
+}
+
+type wgClient struct{}
+
+func NewClient() Client {
+	return &wgClient{}
+}
+
+func (c *wgClient) Create(ifName string) (Link, error) {
+	return Create(ifName)
+}
+
+func (c *wgClient) NsByPath(path string) (NS, error) {
+	return NsByPath(path)
 }

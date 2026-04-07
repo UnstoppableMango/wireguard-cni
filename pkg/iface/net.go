@@ -20,3 +20,8 @@ type Route interface {
 	Dst() net.IPNet
 	Scope() int
 }
+
+type Client interface {
+	Create(ifName string) (Link, error)
+	NsByPath(path string) (NS, error)
+}

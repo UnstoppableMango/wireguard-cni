@@ -7,10 +7,16 @@ import (
 	"runtime"
 )
 
+var errUnsupported = fmt.Errorf("platform not supported: %s", runtime.GOOS)
+
 func Create(ifName string) (Link, error) {
-	return nil, fmt.Errorf("platform not supported: %s", runtime.GOOS)
+	panic(errUnsupported)
 }
 
 func HandleAt(string) (NS, error) {
-	return nil, fmt.Errorf("platform not supported: %s", runtime.GOOS)
+	panic(errUnsupported)
+}
+
+func NewClient() Client {
+	panic(errUnsupported)
 }

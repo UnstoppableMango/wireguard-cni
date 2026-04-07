@@ -8,19 +8,40 @@ import (
 	"github.com/unstoppablemango/wireguard-cni/pkg/config"
 	"github.com/unstoppablemango/wireguard-cni/pkg/iface"
 	"go.uber.org/zap"
+	"golang.zx2c4.com/wireguard/wgctrl"
 )
+
+type Option func(*CNI)
 
 type CNI struct {
 	log  *zap.Logger
+	net  iface.Client
 	conf *config.Config
 	prev *current.Result
 }
 
-func New(conf *config.Config, prev *current.Result) *CNI {
-	return &CNI{
+func New(conf *config.Config, prev *current.Result, options ...Option) *CNI {
+	cni := &CNI{
 		log:  zap.L(),
+		net:  iface.NewClient(),
 		conf: conf,
 		prev: prev,
+	}
+	for _, option := range options {
+		option(cni)
+	}
+	return cni
+}
+
+func WithLogger(log *zap.Logger) Option {
+	return func(cni *CNI) {
+		cni.log = log
+	}
+}
+
+func WithClient(net iface.Client) Option {
+	return func(cni *CNI) {
+		cni.net = net
 	}
 }
 
@@ -44,7 +65,7 @@ func FromBytes(bytes []byte) (*CNI, error) {
 }
 
 func (cni *CNI) Add(netNs, ifName string) error {
-	log := cni.log.With(zap.String("if", ifName))
+	log := cni.log.With(zap.String("if", ifName), zap.String("netns", netNs))
 	if len(cni.prev.IPs) == 0 {
 		return fmt.Errorf("got no container IPs")
 	}
@@ -54,26 +75,26 @@ func (cni *CNI) Add(netNs, ifName string) error {
 		return fmt.Errorf("new result: %w", err)
 	}
 
-	i, err := cni.create(netNs, ifName, log)
+	log.Info("creating interface")
+	link, err := Create(cni.net, netNs, ifName, cni.conf)
 	if err != nil {
 		return fmt.Errorf("create: %w", err)
 	}
 	result.Interfaces = append(result.Interfaces, &current.Interface{
 		Name:    ifName,
 		Sandbox: netNs,
-		Mac:     i.Mac().String(),
+		Mac:     link.Mac().String(),
 	})
 
 	for _, ip := range result.IPs {
 		log.Info("assigning address", zap.Stringer("addr", &ip.Address))
-		if err := i.AssignAddr(ip.Address); err != nil {
+		if err := AssignAddr(link, ip); err != nil {
 			return fmt.Errorf("assign addr: %w", err)
 		}
-		ip.Interface = new(i.Index())
 	}
 
 	log.Info("bringing link up")
-	if err := i.SetUp(); err != nil {
+	if err := link.SetUp(); err != nil {
 		return fmt.Errorf("set up: %w", err)
 	}
 
@@ -81,45 +102,71 @@ func (cni *CNI) Add(netNs, ifName string) error {
 		log := log.With(zap.String("peer", peer.Endpoint))
 		for _, ip := range peer.AllowedIPs {
 			log.Debug("adding route", zap.String("ip", ip))
-			r, err := i.AddRoute(ip)
+			route, err := AddRoute(link, ip)
 			if err != nil {
 				return fmt.Errorf("add route: %w", err)
 			}
-			result.Routes = append(result.Routes, &types.Route{
-				Dst:   r.Dst(),
-				Scope: new(r.Scope()),
-			})
+			result.Routes = append(result.Routes, route)
 		}
 	}
 	return types.PrintResult(result, cni.conf.CNIVersion)
 }
 
-func (cni *CNI) create(netNs, ifName string, log *zap.Logger) (iface.Link, error) {
+func (cni *CNI) Check(ifName string, prev *current.Result) error {
+	panic("not implemented")
+}
+
+func (cni *CNI) Delete(ifName string, stdin []byte) error {
+	panic("not implemented")
+}
+
+func AddRoute(link iface.Link, dst string) (*types.Route, error) {
+	route, err := link.AddRoute(dst)
+	if err != nil {
+		return nil, fmt.Errorf("add route: %w", err)
+	}
+	return &types.Route{
+		Dst:   route.Dst(),
+		Scope: new(route.Scope()),
+	}, nil
+}
+
+func AssignAddr(link iface.Link, ip *current.IPConfig) error {
+	if err := link.AssignAddr(ip.Address); err != nil {
+		return fmt.Errorf("assign addr: %w", err)
+	}
+	ip.Interface = new(link.Index())
+	return nil
+}
+
+func Create(c iface.Client, netNs, ifName string, conf *config.Config) (iface.Link, error) {
+	log := zap.L().With(zap.String("if", ifName))
+
 	log.Info("creating interface")
-	i, err := iface.Create(ifName)
+	link, err := c.Create(ifName)
 	if err != nil {
 		return nil, fmt.Errorf("create interface: %w", err)
 	}
 
+	wg, err := wgctrl.New()
+	if err != nil {
+		return nil, fmt.Errorf("new wgctrl: %w", err)
+	}
+	defer wg.Close()
+
 	log.Debug("configuring interface")
-	if err := cni.Configure(ifName); err != nil {
-		return nil, fmt.Errorf("configure interface: %w", err)
+	if err := Configure(wg, ifName, conf); err != nil {
+		return nil, fmt.Errorf("configure: %w", err)
 	}
 
 	log.Debug("moving interface into container namespace")
-	return i.MoveTo(netNs)
+	return link.MoveTo(netNs)
 }
 
-func (cni *CNI) Check(ifName string, prev *current.Result) error {
-	if err := IPAMCheck(cni.conf, nil); err != nil {
-		return fmt.Errorf("ipam check: %w", err)
+func Configure(c *wgctrl.Client, ifName string, conf *config.Config) error {
+	cfg, err := ConfigFor(conf)
+	if err != nil {
+		return fmt.Errorf("invalid configuration: %w", err)
 	}
-	return nil
-}
-
-func (cni *CNI) Delete(ifName string, stdin []byte) error {
-	if err := IPAMDel(cni.conf, stdin); err != nil {
-		return fmt.Errorf("ipam del: %w", err)
-	}
-	return nil
+	return c.ConfigureDevice(ifName, *cfg)
 }
