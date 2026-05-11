@@ -56,6 +56,23 @@ func (p *Pod) CniConfig(version string, listenPort int, peers []CNIPeer) ([]byte
 	return cniConf(p.key, p.addr+"/24", version, listenPort, peers)
 }
 
+func (p *Pod) CreatePrivateKeySecret(ctx context.Context, name string) error {
+	_, err := p.client.CoreV1().Secrets(p.namespace).Create(ctx, &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: p.namespace,
+		},
+		Data: map[string][]byte{
+			"privateKey": []byte(p.key.String()),
+		},
+	}, metav1.CreateOptions{})
+	return err
+}
+
+func (p *Pod) CniConfigWithSecretRef(version string, listenPort int, peers []CNIPeer, secretName string) ([]byte, error) {
+	return cniConfWithSecretRef(p.namespace, secretName, p.addr+"/24", version, listenPort, peers)
+}
+
 func (p *Pod) ClientPeer() CNIPeer {
 	return CNIPeer{
 		PublicKey:  p.PublicKey(),
