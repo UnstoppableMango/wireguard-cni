@@ -79,7 +79,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: redhat-actions/podman-install@0b0ebeccb256851665136971d7782ba7180773df # main
+      - uses: redhat-actions/podman-install@5bc2ecc87c737059124c295845be51ee7297fb89 # main
 
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
@@ -93,7 +93,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: redhat-actions/podman-install@0b0ebeccb256851665136971d7782ba7180773df # main
+      - uses: redhat-actions/podman-install@5bc2ecc87c737059124c295845be51ee7297fb89 # main
 
       - uses: cachix/install-nix-action@8aa03977d8d733052d78f4e008a241fd1dbf36b3 # v31.10.6
         with:
@@ -145,7 +145,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       # Install outside of Nix for runner deps
-      - uses: redhat-actions/podman-install@0b0ebeccb256851665136971d7782ba7180773df # main
+      - uses: redhat-actions/podman-install@5bc2ecc87c737059124c295845be51ee7297fb89 # main
 
       - uses: cachix/install-nix-action@8aa03977d8d733052d78f4e008a241fd1dbf36b3 # v31.10.6
         with:
