@@ -57,3 +57,22 @@ func cniConf(key wgtypes.Key, address, version string, listenPort int, peers []C
 	}
 	return json.Marshal(conf)
 }
+
+func cniConfWithSecretRef(namespace, secretName, address, version string, listenPort int, peers []CNIPeer) ([]byte, error) {
+	conf := map[string]any{
+		"cniVersion": version,
+		"name":       "wg-k8s-e2e",
+		"type":       "wireguard-cni",
+		"address":    address,
+		"privateKeyRef": map[string]any{
+			"namespace": namespace,
+			"name":      secretName,
+			"key":       "privateKey",
+		},
+		"peers": peers,
+	}
+	if listenPort != 0 {
+		conf["listenPort"] = listenPort
+	}
+	return json.Marshal(conf)
+}
