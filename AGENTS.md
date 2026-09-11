@@ -26,6 +26,11 @@ ginkgo run -r --focus="<test description>" ./...
 
 After changing Go dependencies, run `make tidy` to keep `gomod2nix.toml` in sync with `go.sum` — the CI `clean` job will fail if they diverge.
 
+## CNI Specification
+
+See `CNI_SPEC.md` in the project root for the condensed CNI v1.1.0 spec reference.
+Do NOT fetch the upstream URL — use the local file instead.
+
 ## Architecture
 
 This is a [CNI (Container Network Interface)](https://github.com/containernetworking/cni) plugin that configures WireGuard interfaces inside container network namespaces.
