@@ -3,7 +3,7 @@ module github.com/unstoppablemango/wireguard-cni
 go 1.26.1
 
 require (
-	github.com/containernetworking/cni v1.3.0
+	github.com/containernetworking/cni v1.3.1
 	github.com/containernetworking/plugins v1.9.1
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.43.0
