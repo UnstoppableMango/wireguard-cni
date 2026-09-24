@@ -1,6 +1,7 @@
 # wireguard-cni
 
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/UnstoppableMango/wireguard-cni/badge)](https://scorecard.dev/viewer/?uri=github.com/UnstoppableMango/wireguard-cni)
+[![Hercules CI](https://hercules-ci.com/api/v1/site/github/account/UnstoppableMango/project/wireguard-cni/badge)](https://hercules-ci.com/github/UnstoppableMango/wireguard-cni)
 
 A [CNI (Container Network Interface)](https://github.com/containernetworking/cni) plugin that configures WireGuard interfaces inside container network namespaces.
 
