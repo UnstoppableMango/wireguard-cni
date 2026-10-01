@@ -30,9 +30,9 @@
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = builtins.filter (s: builtins.match ".*-linux" s != null) (import inputs.systems);
 
-      imports = [
-        inputs.systems.flakeModule
-        inputs.treefmt-nix.flakeModule
+      imports = with inputs; [
+        systems.flakeModule or { }
+        treefmt-nix.flakeModule
         (import ./nix { inherit version; })
       ];
 
