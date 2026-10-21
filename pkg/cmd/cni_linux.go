@@ -3,6 +3,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -21,6 +22,14 @@ func Add(args *skel.CmdArgs) error {
 	if err != nil {
 		return err
 	}
+
+	ctx := context.Background()
+	key, err := resolvePrivateKey(ctx, conf)
+	if err != nil {
+		return err
+	}
+	conf.PrivateKey = key
+
 	if conf.PrevResult != nil {
 		if ok, err := version.GreaterThanOrEqualTo(conf.CNIVersion, "0.3.0"); err != nil || !ok {
 			return errors.Join(ErrChainedVersion, err)
@@ -53,6 +62,14 @@ func Check(args *skel.CmdArgs) error {
 	if err != nil {
 		return err
 	}
+
+	ctx := context.Background()
+	key, err := resolvePrivateKey(ctx, conf)
+	if err != nil {
+		return err
+	}
+	conf.PrivateKey = key
+
 	if conf.PrevResult == nil {
 		return ErrPrevResult
 	}
@@ -65,4 +82,11 @@ func Check(args *skel.CmdArgs) error {
 	return ns.WithNetNSPath(args.Netns, func(ns.NetNS) error {
 		return wireguard.Check(network.New(args.IfName), conf, args.IfName, prev)
 	})
+}
+
+func resolvePrivateKey(ctx context.Context, conf *config.Config) (string, error) {
+	if conf.PrivateKeyRef == nil {
+		return conf.PrivateKey, nil
+	}
+	return resolveSecretRef(ctx, conf.PrivateKeyRef)
 }

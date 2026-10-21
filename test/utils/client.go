@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -96,6 +97,45 @@ func (c *Client) CreatePod(ctx context.Context, prefix, namespace, addr string) 
 	}
 
 	return NewPod(c, namespace, pod.Name, addr)
+}
+
+// GrantSecretAccess creates a Role and RoleBinding that allow the default
+// ServiceAccount in namespace to read Secrets. This is needed when the CNI
+// plugin runs inside a pod and must fetch a private key from a Secret.
+func (c *Client) GrantSecretAccess(ctx context.Context, namespace string) error {
+	role := &rbacv1.Role{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "secret-reader",
+			Namespace: namespace,
+		},
+		Rules: []rbacv1.PolicyRule{{
+			APIGroups: []string{""},
+			Resources: []string{"secrets"},
+			Verbs:     []string{"get"},
+		}},
+	}
+	if _, err := c.RbacV1().Roles(namespace).Create(ctx, role, metav1.CreateOptions{}); err != nil {
+		return err
+	}
+
+	binding := &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "secret-reader",
+			Namespace: namespace,
+		},
+		Subjects: []rbacv1.Subject{{
+			Kind:      "ServiceAccount",
+			Name:      "default",
+			Namespace: namespace,
+		}},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: "rbac.authorization.k8s.io",
+			Kind:     "Role",
+			Name:     "secret-reader",
+		},
+	}
+	_, err := c.RbacV1().RoleBindings(namespace).Create(ctx, binding, metav1.CreateOptions{})
+	return err
 }
 
 func resource(prefix, namespace string) *corev1.Pod {
