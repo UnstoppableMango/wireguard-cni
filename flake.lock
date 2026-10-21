@@ -88,16 +88,16 @@
     },
     "systems": {
       "locked": {
-        "lastModified": 1689347949,
-        "narHash": "sha256-12tWmuL2zgBgZkdoB6qXZsgJEH9LR3oUgpaQq2RbI80=",
-        "owner": "nix-systems",
-        "repo": "default-linux",
-        "rev": "31732fcf5e8fea42e59c2488ad31a0e651500f68",
+        "lastModified": 1789010989,
+        "narHash": "sha256-irfHSRNJFce/bqbVtioyeZHhYeCPNitpdTL2ljyHVSk=",
+        "owner": "UnstoppableMango",
+        "repo": "nix-systems",
+        "rev": "65a92fc9e5f34414623b90dd0f795d9c2ddf4c40",
         "type": "github"
       },
       "original": {
-        "owner": "nix-systems",
-        "repo": "default-linux",
+        "owner": "UnstoppableMango",
+        "repo": "nix-systems",
         "type": "github"
       }
     },
